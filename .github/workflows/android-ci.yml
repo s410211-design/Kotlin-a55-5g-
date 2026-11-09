@@ -33,8 +33,17 @@ jobs:
         uses: android-actions/setup-android@v4
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
-      - name: Install Android 17 SDK
-        run: sdkmanager "platforms;android-37" "build-tools;36.0.0"
+      - name: Install Android 17 Preview SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          sdkmanager --sdk_root="$SDK_ROOT" --channel=3 "platforms;android-37.0" "build-tools;37.0.0"
+          # API 37 preview packages are published under android-37.0.
+          # AGP resolves compileSdk 37 using the conventional android-37 path.
+          if [[ -d "$SDK_ROOT/platforms/android-37.0" && ! -e "$SDK_ROOT/platforms/android-37" ]]; then
+            ln -s android-37.0 "$SDK_ROOT/platforms/android-37"
+          fi
       - name: Run unit tests and assemble Debug APK
         run: ./gradlew --no-daemon clean testDebugUnitTest assembleDebug
       - name: Upload Debug APK
