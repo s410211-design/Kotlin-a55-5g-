@@ -62,11 +62,19 @@ class GpuTelemetrySampler(
         val readings = candidates.map { candidate ->
             candidate to runCatching { reader(candidate, sampledAtMillis) }
                 .getOrElse { error ->
-                    Reading.Error(
-                        candidate.path,
-                        sampledAtMillis,
-                        error.javaClass.simpleName
-                    )
+                    if (error is SecurityException) {
+                        Reading.PermissionDenied(
+                            candidate.path,
+                            sampledAtMillis,
+                            "讀取遭系統安全政策拒絕"
+                        )
+                    } else {
+                        Reading.Error(
+                            candidate.path,
+                            sampledAtMillis,
+                            error.javaClass.simpleName
+                        )
+                    }
                 }
         }
         return GpuSampleBatch(sampledAtMillis, readings)
