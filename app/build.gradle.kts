@@ -4,6 +4,7 @@ plugins {
 android {
     namespace = "com.s410211.a55wuwa"
     compileSdk = 37
+    buildToolsVersion = "37.0.0"
     defaultConfig {
         applicationId = "com.s410211.a55wuwa"
         minSdk = 34
