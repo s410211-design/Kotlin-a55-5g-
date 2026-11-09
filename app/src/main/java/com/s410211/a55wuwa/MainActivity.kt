@@ -124,6 +124,11 @@ class MainActivity : Activity() {
                 appendLine("裝置代號：${profile.device}")
                 appendLine("硬體平台字串：${profile.hardware}")
                 appendLine("Android：${profile.androidRelease}（API ${profile.sdkInt}）")
+                appendLine("One UI（Build 字串提示）：${profile.oneUiVersionHint ?: "尚未從公開 Build 字串辨識"}")
+                appendLine("Build ID：${profile.buildId.ifBlank { "系統未提供" }}")
+                appendLine("核心版本：${profile.kernelRelease ?: "系統未提供"}")
+                appendLine("Build Display：${profile.buildDisplay.ifBlank { "系統未提供" }}")
+                appendLine("Build Fingerprint：${profile.buildFingerprint.ifBlank { "系統未提供" }}")
                 append("安全更新：${profile.securityPatch ?: "系統未提供"}")
             }
             page.addView(card("裝置資訊", deviceText))
