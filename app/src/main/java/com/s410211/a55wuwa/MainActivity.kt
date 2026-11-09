@@ -11,6 +11,10 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import com.s410211.a55wuwa.telemetry.GpuNodeCatalog
+import com.s410211.a55wuwa.telemetry.GpuNodeCandidate
+import com.s410211.a55wuwa.telemetry.GpuSysfsReader
+import com.s410211.a55wuwa.telemetry.Reading
 import java.util.concurrent.Executors
 
 class MainActivity : Activity() {
@@ -51,7 +55,7 @@ class MainActivity : Activity() {
         }
 
         refreshButton = Button(this).apply {
-            text = "重新整理裝置資訊"
+            text = "重新整理裝置與 GPU 節點"
             isAllCaps = false
             setTextColor(Color.rgb(11, 16, 20))
             setBackgroundColor(Color.rgb(120, 224, 189))
@@ -75,17 +79,36 @@ class MainActivity : Activity() {
         refreshButton.isEnabled = false
         refreshButton.text = "讀取中…"
         ioExecutor.execute {
-            val result = runCatching { DeviceProfileReader.read(applicationContext) }
+            val profileResult = runCatching { DeviceProfileReader.read(applicationContext) }
+            val gpuResults = GpuNodeCatalog.candidates.map { candidate ->
+                candidate to runCatching {
+                    GpuSysfsReader.read(candidate)
+                }.getOrElse { error ->
+                    Reading.Error(
+                        candidate.path,
+                        android.os.SystemClock.elapsedRealtime(),
+                        error.javaClass.simpleName
+                    )
+                }
+            }
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 refreshButton.isEnabled = true
-                refreshButton.text = "重新整理裝置資訊"
-                render(result.getOrNull(), result.exceptionOrNull())
+                refreshButton.text = "重新整理裝置與 GPU 節點"
+                render(
+                    profileResult.getOrNull(),
+                    profileResult.exceptionOrNull(),
+                    gpuResults
+                )
             }
         }
     }
 
-    private fun render(profile: DeviceProfile?, failure: Throwable?) {
+    private fun render(
+        profile: DeviceProfile?,
+        failure: Throwable?,
+        gpuResults: List<Pair<GpuNodeCandidate, Reading<String>>>
+    ) {
         page.removeAllViews()
         page.addView(label("A55 PERFORMANCE LAB", 12, Color.rgb(120, 224, 189), true))
         page.addView(title("鳴潮效能監控"))
@@ -125,10 +148,37 @@ class MainActivity : Activity() {
             "Galaxy A55 5G／8GB RAM／256GB 儲存（依使用者提供）\n" +
                 "Android 17／One UI 9（依使用者提供；App 端版本辨識仍待驗證）"
         ))
-        page.addView(card(
-            "GPU 即時負載與頻率",
-            "尚未讀取。候選 sysfs 節點必須先在 SM-A5560 零售韌體上確認存在、格式、單位與權限。頻率表不會當成當前頻率。"
-        ))
+
+        val gpuText = buildString {
+            appendLine("以下是唯讀節點探測，不代表讀出的原始內容已具備負載／頻率語義。")
+            appendLine("即時 GPU 負載只會在確認零售韌體資料格式後才轉換成百分比。")
+            gpuResults.forEach { (candidate, reading) ->
+                appendLine()
+                appendLine("${candidate.roleLabel()}  ${reading.statusLabel()}")
+                append(candidate.path)
+                if (reading is Reading.Value) {
+                    appendLine()
+                    append("原始資料：${reading.value.toSafeDisplay()}")
+                } else {
+                    val reason = when (reading) {
+                        is Reading.AwaitingSample -> reading.reason
+                        is Reading.Unsupported -> reading.reason
+                        is Reading.PermissionDenied -> reading.reason
+                        is Reading.NotFound -> reading.reason
+                        is Reading.InvalidData -> reading.reason
+                        is Reading.TemporarilyUnavailable -> reading.reason
+                        is Reading.Error -> reading.reason
+                        is Reading.Value -> ""
+                    }
+                    if (reason.isNotBlank()) {
+                        appendLine()
+                        append("原因：$reason")
+                    }
+                }
+            }
+        }
+        page.addView(card("GPU 節點唯讀探測", gpuText))
+
         page.addView(card(
             "遊戲 FPS",
             "尚未取得有效的遊戲呈現時間來源。不會用螢幕更新率或本 App 自身畫面更新率冒充鳴潮 FPS。"
@@ -141,15 +191,41 @@ class MainActivity : Activity() {
             "安全最佳化",
             "目前不會寫入 GPU、CPU 或溫控設定。必須先確認裝置支援、原值、讀回驗證與安全還原方式。"
         ))
-        refreshButton.text = "重新整理裝置資訊"
+        refreshButton.text = "重新整理裝置與 GPU 節點"
         page.addView(refreshButton, marginParams(top = 16))
         page.addView(label(
-            "目前版本：0.1.0 · 裝置資訊與 GPU 解析核心",
+            "目前版本：0.2.0 · 裝置資訊與唯讀 GPU 探測",
             11,
             Color.rgb(132, 148, 156),
             false
         ), marginParams(top = 18))
     }
+
+    private fun GpuNodeCandidate.roleLabel(): String = when (role) {
+        com.s410211.a55wuwa.telemetry.GpuNodeRole.UTILIZATION_CANDIDATE -> "GPU 負載候選"
+        com.s410211.a55wuwa.telemetry.GpuNodeRole.CURRENT_CLOCK_CANDIDATE -> "GPU 當前頻率候選"
+        com.s410211.a55wuwa.telemetry.GpuNodeRole.SUPPORTED_CLOCK_TABLE -> "GPU 支援頻率表"
+        com.s410211.a55wuwa.telemetry.GpuNodeRole.TEMPERATURE_CANDIDATE -> "GPU 溫度候選"
+        com.s410211.a55wuwa.telemetry.GpuNodeRole.GPU_IDENTIFICATION -> "GPU 型號資訊"
+        com.s410211.a55wuwa.telemetry.GpuNodeRole.MEMORY_INFORMATION -> "GPU 記憶體資訊"
+    }
+
+    private fun Reading<*>.statusLabel(): String = when (this) {
+        is Reading.Value -> "可讀取"
+        is Reading.AwaitingSample -> "等待下一筆樣本"
+        is Reading.Unsupported -> "不支援"
+        is Reading.PermissionDenied -> "權限拒絕"
+        is Reading.NotFound -> "節點不存在"
+        is Reading.InvalidData -> "資料格式無效"
+        is Reading.TemporarilyUnavailable -> "暫時不可用"
+        is Reading.Error -> "讀取錯誤"
+    }
+
+    private fun String.toSafeDisplay(): String = take(160)
+        .filter { it == '\n' || it == '\t' || !it.isISOControl() }
+        .replace('\n', ' ')
+        .replace('\t', ' ')
+        .ifBlank { "（空內容）" }
 
     private fun title(value: String): TextView = TextView(this).apply {
         text = value
