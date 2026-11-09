@@ -42,8 +42,6 @@ object DeviceProfileReader {
             }
         }.getOrNull()
 
-        val displayAndFingerprint = listOf(Build.DISPLAY.orEmpty(), Build.FINGERPRINT.orEmpty())
-            .joinToString(" ")
         val oneUiVersionHint = OneUiVersionParser.parse(Build.DISPLAY, Build.FINGERPRINT)
 
         return DeviceProfile(
