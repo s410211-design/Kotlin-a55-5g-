@@ -46,6 +46,8 @@ Included:
 - Separate instant-percentage and cumulative-counter GPU utilization parsers.
 - GPU frequency parser that requires an explicit, source-verified input unit before converting to Hz.
 - Bounded, read-only probe of the catalogued GPU sysfs candidates with errno-based result classification.
+- A single-worker, bounded-rate GPU sampler that runs only while the dashboard Activity is visible, isolates per-node failures, and is shared by the manual refresh path.
+- Typed read-only Shizuku command policy for fixed GPU-node and approved system-property reads; this defines the allowlist only and does not yet establish a Shizuku connection or execute shell commands.
 - Candidate GPU sysfs node catalog that does not claim retail-firmware availability.
 - JVM unit tests and GitHub Actions build/test workflow.
 
