@@ -15,11 +15,17 @@ import android.widget.TextView
 import com.s410211.a55wuwa.telemetry.GpuNodeCatalog
 import com.s410211.a55wuwa.telemetry.GpuNodeCandidate
 import com.s410211.a55wuwa.telemetry.GpuSysfsReader
+import com.s410211.a55wuwa.telemetry.GpuSampleBatch
+import com.s410211.a55wuwa.telemetry.GpuTelemetrySampler
 import com.s410211.a55wuwa.telemetry.Reading
 import java.util.concurrent.Executors
 
 class MainActivity : Activity() {
     private val ioExecutor = Executors.newSingleThreadExecutor()
+    private val gpuSampler = GpuTelemetrySampler(intervalMillis = 1_000L)
+    private var activityVisible = false
+    private var latestGpuResults: List<Pair<GpuNodeCandidate, Reading<String>>>? = null
+    private var gpuValueText: TextView? = null
     private lateinit var page: LinearLayout
     private lateinit var refreshButton: Button
 
@@ -110,6 +116,7 @@ class MainActivity : Activity() {
         failure: Throwable?,
         gpuResults: List<Pair<GpuNodeCandidate, Reading<String>>>
     ) {
+        gpuValueText = null
         page.removeAllViews()
         page.addView(label("A55 PERFORMANCE LAB", 12, Color.rgb(120, 224, 189), true))
         page.addView(title("鳴潮效能監控"))
@@ -155,35 +162,14 @@ class MainActivity : Activity() {
                 "Android 17／One UI 9（依使用者提供；App 端版本辨識仍待驗證）"
         ))
 
-        val gpuText = buildString {
-            appendLine("以下是唯讀節點探測，不代表讀出的原始內容已具備負載／頻率語義。")
-            appendLine("即時 GPU 負載只會在確認零售韌體資料格式後才轉換成百分比。")
-            gpuResults.forEach { (candidate, reading) ->
-                appendLine()
-                appendLine("${candidate.roleLabel()}  ${reading.statusLabel()}")
-                append(candidate.path)
-                if (reading is Reading.Value) {
-                    appendLine()
-                    append("原始資料：${reading.value.toSafeDisplay()}")
-                } else {
-                    val reason = when (reading) {
-                        is Reading.AwaitingSample -> reading.reason
-                        is Reading.Unsupported -> reading.reason
-                        is Reading.PermissionDenied -> reading.reason
-                        is Reading.NotFound -> reading.reason
-                        is Reading.InvalidData -> reading.reason
-                        is Reading.TemporarilyUnavailable -> reading.reason
-                        is Reading.Error -> reading.reason
-                        is Reading.Value -> ""
-                    }
-                    if (reason.isNotBlank()) {
-                        appendLine()
-                        append("原因：$reason")
-                    }
-                }
-            }
-        }
-        page.addView(card("GPU 節點唯讀探測", gpuText))
+        val visibleGpuResults = latestGpuResults ?: gpuResults
+        page.addView(
+            card(
+                "GPU 節點唯讀探測",
+                formatGpuReadings(visibleGpuResults, android.os.SystemClock.elapsedRealtime())
+            ) { gpuValueText = it }
+        )
+
 
         page.addView(card(
             "遊戲 FPS",
@@ -205,6 +191,39 @@ class MainActivity : Activity() {
             Color.rgb(132, 148, 156),
             false
         ), marginParams(top = 18))
+    }
+
+    private fun formatGpuReadings(
+        gpuResults: List<Pair<GpuNodeCandidate, Reading<String>>>,
+        sampledAtMillis: Long
+    ): String = buildString {
+        appendLine("最近取樣：系統啟動後 ${sampledAtMillis} ms")
+        appendLine("以下是唯讀節點探測，不代表原始資料已具備負載／頻率語義。")
+        appendLine("只有確認零售韌體格式、單位與來源後，才會轉換成 GPU 百分比或頻率。")
+        gpuResults.forEach { (candidate, reading) ->
+            appendLine()
+            appendLine("${candidate.roleLabel()}  ${reading.statusLabel()}")
+            append(candidate.path)
+            if (reading is Reading.Value) {
+                appendLine()
+                append("原始資料：${reading.value.toSafeDisplay()}")
+            } else {
+                val reason = when (reading) {
+                    is Reading.AwaitingSample -> reading.reason
+                    is Reading.Unsupported -> reading.reason
+                    is Reading.PermissionDenied -> reading.reason
+                    is Reading.NotFound -> reading.reason
+                    is Reading.InvalidData -> reading.reason
+                    is Reading.TemporarilyUnavailable -> reading.reason
+                    is Reading.Error -> reading.reason
+                    is Reading.Value -> ""
+                }
+                if (reason.isNotBlank()) {
+                    appendLine()
+                    append("原因：$reason")
+                }
+            }
+        }
     }
 
     private fun GpuNodeCandidate.roleLabel(): String = when (role) {
@@ -259,7 +278,11 @@ class MainActivity : Activity() {
             if (bold) typeface = Typeface.create("sans-serif", Typeface.BOLD)
         }
 
-    private fun card(heading: String, value: String): LinearLayout {
+    private fun card(
+        heading: String,
+        value: String,
+        onValueViewCreated: ((TextView) -> Unit)? = null
+    ): LinearLayout {
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(14), dp(16), dp(16))
@@ -270,13 +293,15 @@ class MainActivity : Activity() {
             }
         }
         container.addView(label(heading, 15, Color.rgb(120, 224, 189), true))
-        container.addView(TextView(this).apply {
+        val valueView = TextView(this).apply {
             text = value
             textSize = 13f
             setTextColor(Color.rgb(218, 229, 228))
             setLineSpacing(dp(4).toFloat(), 1f)
             setPadding(0, dp(9), 0, 0)
-        })
+        }
+        container.addView(valueView)
+        onValueViewCreated?.invoke(valueView)
         return container.apply { layoutParams = marginParams(top = 10) }
     }
 
@@ -289,7 +314,26 @@ class MainActivity : Activity() {
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density).toInt()
 
+    override fun onStart() {
+        super.onStart()
+        activityVisible = true
+        gpuSampler.start { batch: GpuSampleBatch ->
+            runOnUiThread {
+                if (!activityVisible || isFinishing || isDestroyed) return@runOnUiThread
+                latestGpuResults = batch.readings
+                gpuValueText?.text = formatGpuReadings(batch.readings, batch.sampledAtMillis)
+            }
+        }
+    }
+
+    override fun onStop() {
+        activityVisible = false
+        gpuSampler.stop()
+        super.onStop()
+    }
+
     override fun onDestroy() {
+        gpuSampler.close()
         ioExecutor.shutdownNow()
         super.onDestroy()
     }
