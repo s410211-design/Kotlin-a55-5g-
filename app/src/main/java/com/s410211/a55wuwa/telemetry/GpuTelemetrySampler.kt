@@ -32,6 +32,7 @@ class GpuTelemetrySampler(
 
     private var scheduledTask: ScheduledFuture<*>? = null
     private var callback: ((GpuSampleBatch) -> Unit)? = null
+    private val samplingLock = Any()
 
     init {
         require(intervalMillis in MIN_INTERVAL_MILLIS..MAX_INTERVAL_MILLIS) {
@@ -58,27 +59,28 @@ class GpuTelemetrySampler(
         )
     }
 
-    fun sampleOnce(sampledAtMillis: Long = clock()): GpuSampleBatch {
-        val readings = candidates.map { candidate ->
-            candidate to runCatching { reader(candidate, sampledAtMillis) }
-                .getOrElse { error ->
-                    if (error is SecurityException) {
-                        Reading.PermissionDenied(
-                            candidate.path,
-                            sampledAtMillis,
-                            "讀取遭系統安全政策拒絕"
-                        )
-                    } else {
-                        Reading.Error(
-                            candidate.path,
-                            sampledAtMillis,
-                            error.javaClass.simpleName
-                        )
+    fun sampleOnce(sampledAtMillis: Long = clock()): GpuSampleBatch =
+        synchronized(samplingLock) {
+            val readings = candidates.map { candidate ->
+                candidate to runCatching { reader(candidate, sampledAtMillis) }
+                    .getOrElse { error ->
+                        if (error is SecurityException) {
+                            Reading.PermissionDenied(
+                                candidate.path,
+                                sampledAtMillis,
+                                "讀取遭系統安全政策拒絕"
+                            )
+                        } else {
+                            Reading.Error(
+                                candidate.path,
+                                sampledAtMillis,
+                                error.javaClass.simpleName
+                            )
+                        }
                     }
-                }
+            }
+            GpuSampleBatch(sampledAtMillis, readings)
         }
-        return GpuSampleBatch(sampledAtMillis, readings)
-    }
 
     @Synchronized
     fun stop() {
