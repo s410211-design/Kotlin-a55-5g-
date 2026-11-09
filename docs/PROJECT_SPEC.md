@@ -55,12 +55,63 @@ These are candidates, not guarantees on retail firmware. Discover DRM devices by
 For cumulative busy/total counters, calculate utilization from deltas:
 `100 * deltaBusy / deltaTotal`, and guard against zero, negative, reset, and overflow cases. A frequency table is a list of supported operating points, not the current clock. A reported clock may be cached or stale; expose source and freshness. Inspect `utilization_source` and `available_utilization_sources` before describing a utilization counter as hardware-derived. Do not infer the GPU model from a single sysfs string.
 
+
+### GPU source semantics and parser consistency
+
+Every candidate GPU node must be assigned an explicit parser based on verified kernel semantics, not inferred solely from a familiar filename. The source adapter must record source path, access channel, unit, timestamp, sample interval, data shape, and confidence/precision.
+
+Supported data shapes must remain distinct:
+
+- **Instant percentage:** a single sample is already a percentage. Validate its syntax and 0–100 range; do not calculate a second delta.
+- **Cumulative busy/total counters:** the first sample establishes a baseline and must return an awaiting-sample state. Subsequent samples use `100 × Δbusy / Δtotal`. Reject or reset the baseline for counter rollback/reset, overflow, `Δtotal <= 0`, `Δbusy < 0`, or `Δbusy > Δtotal`. Do not clamp malformed values into a plausible percentage.
+- **Cumulative time/vendor statistics:** establish the unit and counter semantics before calculating deltas. Do not mix ns, ms, jiffies, or other clock domains.
+- **Current frequency:** parse separately from the supported frequency table. Preserve the raw unit and normalize only through an explicit, tested conversion. Track sample age and whether the value is current or last-known.
+
+The direct sysfs reader and Shizuku shell reader must share the same parser and sampling state for a given source. The access channel may change; the meaning and calculation must not. In particular, a Shizuku fallback must not interpret a cumulative busy/total pair using the absolute ratio when the direct reader uses deltas.
+
+A parent directory existing is not proof that a specific value node exists. Probe the exact file and distinguish confirmed missing, confirmed access denial, malformed value, transient failure, and indeterminate visibility. If permission restrictions prevent confirming existence, report restricted/unknown rather than asserting NotFound. Do not cache a permanent failure forever: capability probes should have an explicit invalidation/recheck policy for permission changes, firmware changes, and service reconnection.
+
+### Exynos SGPU community-kernel observations
+
+The following are observations from the community tree [Lyinceer/android_kernel_samsung_exynos_1480](https://github.com/Lyinceer/android_kernel_samsung_exynos_1480), not confirmation of the retail SM-A5560 kernel:
+
+- `exynos_gpu_interface.c` implements `gpu_busy_show()` by formatting `last_status.busy_time / total_time × 100`; this output is a computed percentage, not a raw cumulative pair. The application must inspect the actual device node format before selecting a parser.
+- `gpu_clock_show()` tries the device's `get_cur_freq` callback and falls back to `previous_freq` when that callback is unavailable or fails. A returned value may therefore be last-known rather than a fresh hardware clock. Do not label it unconditionally as a real-time frequency.
+- `gpu_freq_table` represents supported operating points and must not be shown as the currently active frequency.
+- In the reviewed `sgpu_utilization.c` source, the default utilization source is `jiffies`; the `hw_counter` entry has `hw_source_valid = false`. The existence of a source name or its appearance in `available_utilization_sources` does not prove that it is active or valid hardware telemetry.
+- The inspected `gpu_busy_show()` division does not visibly guard a zero `total_time` in that function. The app must reject invalid, non-finite, out-of-range, or unavailable readings rather than trusting the node blindly.
+
+For every real-device validation, record model, build fingerprint, Android/One UI/kernel versions, exact node path, raw sample format, access method, permission outcome, timestamps, and the current/available utilization sources when exposed. Do not write `utilization_source`, GPU min/max frequency, or other kernel controls as part of telemetry discovery. Any future write operation requires a separate approved proposal and its own safety/restore tests.
+
+## FPS measurement and provenance
+
+FPS must describe the target game's actual frame presentation, not merely a convenient timer or the app's own render loop.
+
+- Keep display refresh rate as a separate display capability/measurement. It is never a fallback FPS value for Wuthering Waves.
+- Choreographer callbacks in this app measure this app's own UI frame callbacks only. They cannot be labeled as another process's game FPS.
+- `dumpsys gfxinfo` framestats may be useful for supported UI-rendered apps, but it is not a universal source for Vulkan, NativeActivity, or SurfaceView-heavy games. Do not use it as a silent fallback for Wuthering Waves.
+- SurfaceFlinger `--latency` data must be parsed according to the exact Android-version output contract. A single frame's start-to-completion duration is not automatically the interval between consecutive presented frames. Prefer validated present-to-present timestamps or an appropriate FrameTimeline source when available.
+- FrameTimeline and SurfaceFlinger access may be permission-, API-, layer-, and device-dependent. A successful shell command alone does not prove that the selected layer belongs to the game or that the timestamps represent actual presented frames.
+- Resolve the foreground package and the correct game surface/layer; validate package ownership, layer identity, timestamp ordering, sentinels, refresh-period metadata, and stale-cache invalidation after package changes, rotation, surface recreation, or command failures.
+- Every FPS snapshot must include measurement method, package/layer identity when known, access tier, sample window, timestamp, stale/fresh status, and limitations. If the source is not valid for the game, return unavailable rather than a guessed number.
+- Do not average or smooth together values from different methods (for example, display refresh rate and SurfaceFlinger present timestamps) as though they were equivalent.
+
 ## Permissions and Shizuku
 - ADB shell UID 2000 and Shizuku access are not root.
 - SELinux and file permissions may still deny access.
 - Detect Shizuku binder death, permission revocation, and reconnect safely.
 - Use bounded exponential backoff for reconnect attempts; cancel retries when the service stops.
 - Explain missing capability in plain language; do not ask users to type sysfs paths or shell commands in the app.
+
+### Shell command allowlist and lifecycle
+
+- Shell access is centralized behind a typed allowlist (for example, sealed command types); callers and UI components cannot submit arbitrary shell text.
+- Validate every argument. Never concatenate untrusted package names, paths, or UI input into commands. Canonicalize filesystem paths and restrict them to explicitly allowed locations.
+- Prefer read-only commands for diagnostics. Each allowed command declares its purpose, timeout, cancellation behavior, output cap, and exit-status/error mapping.
+- Bound stdout and stderr independently. Do not persist raw dumpsys output, window titles, installed package inventories, or other potentially sensitive data in logcat; retain only the minimum sanitized diagnostic summary.
+- Track Binder liveness, Shizuku permission, UserService binding, remote-process liveness, and command success as separate states. A live Binder does not mean the UserService is ready, and permission grant does not prove that a particular command is allowed by SELinux.
+- Binding/rebinding must be idempotent, bounded, cancellable, and performed off the main thread. Binder death or permission revocation must invalidate stale remote references and stop affected jobs safely.
+- Respect the selected privilege policy. A forced Shizuku mode must fail closed when Shizuku is unavailable; do not silently execute the same operation under a different privilege tier.
 
 ## Safe Boost contract
 A Boost operation must expose these stages:
@@ -125,6 +176,16 @@ Safety restrictions:
 - [ ] AT-15: Stop cancels sampling, retries, foreground work, and temporary resources.
 - [ ] AT-16: Final validation is performed on a real Galaxy A55 5G, not an emulator alone.
 
+- [ ] AT-17: GPU data-source adapters distinguish instantaneous percentages, cumulative counters, and cumulative time/vendor statistics; each uses its matching parser.
+- [ ] AT-18: Direct sysfs and Shizuku reads of the same cumulative source share the same delta baseline and produce equivalent results; the first sample awaits a second sample.
+- [ ] AT-19: Counter reset/rollback, zero or negative delta total, negative busy delta, busy delta greater than total delta, overflow, malformed text, and non-finite values never become a normal 0–100% reading.
+- [ ] AT-20: GPU node discovery checks the exact target file; an existing parent directory alone does not prove that the value node exists or that access is denied.
+- [ ] AT-21: Current GPU frequency is tagged with source and freshness; a last-known/fallback clock is never presented as a confirmed real-time frequency.
+- [ ] AT-22: Exynos utilization-source metadata is treated as kernel/build-specific; source names and available-source lists alone do not prove valid hardware-counter telemetry.
+- [ ] AT-23: Game FPS is calculated from validated game presentation intervals; single-frame render duration, app Choreographer callbacks, and display refresh rate are not mislabeled as game FPS.
+- [ ] AT-24: FPS layer/package matching, sentinel filtering, timestamp ordering, sample windows, stale-state handling, and cache invalidation are covered by parser/unit tests.
+- [ ] AT-25: Shell commands are allowlisted and parameter-validated; timeout, cancellation, bounded output, Binder death, permission revocation, and forced privilege policy are tested.
+
 ## Development sequence
 1. Inspect repository and establish Kotlin/Gradle Android project structure.
 2. Implement device identity and read-only diagnostics.
@@ -145,8 +206,11 @@ The actual SM-A5560 firmware's readable GPU nodes, permission behavior, utilizat
 
 ## Reference-project review notes
 Potential implementation patterns worth evaluating:
-- GameCore: typed sensor states, Shizuku integration, and conditional restore.
-- FusionHUD: separation of sampling and HUD rendering, dynamic GPU path discovery.
-- Shizuku API: binder lifecycle and permission handling.
+- [GameCore](https://github.com/Dreamucxe/GameCore) (MIT): Kotlin/Shizuku layering, typed GPU read states, typed shell commands, write ledger, conditional restore, and JVM tests. Code review found a consistency hazard: its direct cumulative `gpubusy` reader uses deltas, while its elevated-shell fallback parses an absolute busy/total ratio. Do not reproduce that inconsistency.
+- [DeviceInsight](https://github.com/zenithblue-oss/DeviceInsight) (GPL-3.0-or-later): FPS source separation, SurfaceFlinger layer discovery, Shizuku shell gateway, privilege policy, and parser tests. Its legacy SurfaceFlinger parser's frame-start-to-completion duration is not automatically present-to-present FPS. Its gfxinfo path is not a universal Vulkan/Native game source. Its shell gateway accepts command strings, so this project must retain a stricter typed allowlist.
+- [MonitoredCheck](https://github.com/GenzPx/MonitoredCheck) (MIT): typed `Reading<T>` statuses, hardware repositories, monitoring services, and test organization. Avoid its absolute-ratio treatment of cumulative `gpubusy` and lossy digit-filter parsing.
+- [FusionHUD](https://github.com/The412Banner/FusionHUD) (GPL-3.0 plus an additional attribution requirement stated in its `ATTRIBUTION.md`): HUD rendering, shared snapshots, and separation of sampling from drawing. Its FPS counter is fed from a Winlator rendering/present callback; that does not make it a generic third-party Android game FPS API. Do not port its legacy absolute-ratio or lossy parser behavior.
+- [Shizuku-API](https://github.com/RikkaApps/Shizuku-API) (MIT): primary API reference for Binder, permission, and UserService lifecycle.
+- [Exynos 1480 community kernel](https://github.com/Lyinceer/android_kernel_samsung_exynos_1480): research reference for SGPU sysfs semantics only; it does not prove the behavior of SM-A5560 retail firmware.
 
-Do not copy code without checking its license and preserving required notices. In particular, review GPL-3.0 obligations before deriving code from GPL-licensed projects. Avoid known pitfalls: calculating cumulative counters as raw ratios, stripping decimal/negative characters with simplistic regex, guessing clock units, treating unavailable as zero, or assuming a fixed DRM card index.
+Do not copy code without checking the current license, copyright notice, attribution conditions, and distribution obligations. Keep each upstream project as an architecture/behavior reference unless an explicit code-use and license review is completed. Known pitfalls to test against include: cumulative counters parsed as absolute ratios; direct and Shizuku paths using different algorithms; directories mistaken for existing value nodes; frequency fallbacks presented as fresh; simplistic regex stripping decimal/negative signs; guessed clock units; app Choreographer or display refresh mislabeled as game FPS; and assuming a fixed DRM card index.
