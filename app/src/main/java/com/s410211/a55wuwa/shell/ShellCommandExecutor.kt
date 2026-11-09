@@ -70,6 +70,9 @@ class ShellCommandExecutor(
             )
         }
 
+        // None of the allowlisted commands consume stdin; close it immediately.
+        closeQuietly(process.outputStream)
+
         val stdoutTask = FutureTask { capture(process.inputStream, spec.stdoutLimitBytes) }
         val stderrTask = FutureTask { capture(process.errorStream, spec.stderrLimitBytes) }
         Thread(stdoutTask, "a55-shell-stdout").apply { isDaemon = true }.start()
@@ -103,7 +106,6 @@ class ShellCommandExecutor(
 
         val stdout = awaitCapture(stdoutTask)
         val stderr = awaitCapture(stderrTask)
-        closeQuietly(process.outputStream)
 
         val state = when {
             cancelled -> ShellExecutionState.CANCELLED
@@ -134,7 +136,10 @@ class ShellCommandExecutor(
         val exited = runCatching {
             process.waitFor(terminationGraceMillis, TimeUnit.MILLISECONDS)
         }.getOrDefault(false)
-        if (!exited) runCatching { process.destroyForcibly() }
+        if (!exited) {
+            runCatching { process.destroyForcibly() }
+            runCatching { process.waitFor(terminationGraceMillis, TimeUnit.MILLISECONDS) }
+        }
     }
 
     private fun capture(stream: InputStream, byteLimit: Int): CapturedStream {
