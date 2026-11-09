@@ -200,7 +200,7 @@ class MainActivity : Activity() {
         refreshButton.text = "重新整理裝置與 GPU 節點"
         page.addView(refreshButton, marginParams(top = 16))
         page.addView(label(
-            "目前版本：0.2.0 · 裝置資訊與唯讀 GPU 探測",
+            "目前版本：0.3.0 · 裝置識別與唯讀 GPU 探測",
             11,
             Color.rgb(132, 148, 156),
             false
