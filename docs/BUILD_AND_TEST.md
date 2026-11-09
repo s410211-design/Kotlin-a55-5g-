@@ -48,7 +48,8 @@ Included:
 - Bounded, read-only probe of the catalogued GPU sysfs candidates with errno-based result classification.
 - A single-worker, bounded-rate GPU sampler that runs only while the dashboard Activity is visible, isolates per-node failures, and is shared by the manual refresh path.
 - Typed read-only Shizuku command policy for fixed GPU-node and approved system-property reads.
-- Bounded process executor with concurrent stdout/stderr draining, strict output caps, command deadlines, process termination, and explicit result states. The executor is transport-agnostic and is not yet wired to Shizuku.
+- Bounded process executor with concurrent stdout/stderr draining, strict output caps, command deadlines, process termination, and explicit result states.
+- Shell outcome mapper that converts command results into the same typed telemetry states as direct sysfs reads, without inferring permission denial or missing-node status from localized stderr text. The executor is transport-agnostic and is not yet wired to Shizuku.
 - Candidate GPU sysfs node catalog that does not claim retail-firmware availability.
 - JVM unit tests and GitHub Actions build/test workflow.
 
