@@ -39,10 +39,10 @@ class GpuTelemetrySamplerTest {
             assertTrue(value is Reading.Value)
             assertEquals(777L, value.sampledAtMillis)
 
-            val error = batch.readings[1].second
-            assertTrue(error is Reading.Error)
-            assertEquals(failing.path, error.source)
-            assertEquals("SecurityException", error.reason)
+            val denial = batch.readings[1].second
+            assertTrue(denial is Reading.PermissionDenied)
+            assertEquals(failing.path, denial.source)
+            assertEquals("讀取遭系統安全政策拒絕", (denial as Reading.PermissionDenied).reason)
         } finally {
             sampler.close()
         }
