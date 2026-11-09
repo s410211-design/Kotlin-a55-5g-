@@ -12,9 +12,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import com.s410211.a55wuwa.telemetry.GpuNodeCatalog
 import com.s410211.a55wuwa.telemetry.GpuNodeCandidate
-import com.s410211.a55wuwa.telemetry.GpuSysfsReader
 import com.s410211.a55wuwa.telemetry.GpuSampleBatch
 import com.s410211.a55wuwa.telemetry.GpuTelemetrySampler
 import com.s410211.a55wuwa.telemetry.Reading
@@ -87,17 +85,8 @@ class MainActivity : Activity() {
         refreshButton.text = "讀取中…"
         ioExecutor.execute {
             val profileResult = runCatching { DeviceProfileReader.read(applicationContext) }
-            val gpuResults = GpuNodeCatalog.candidates.map { candidate ->
-                candidate to runCatching {
-                    GpuSysfsReader.read(candidate)
-                }.getOrElse { error ->
-                    Reading.Error(
-                        candidate.path,
-                        android.os.SystemClock.elapsedRealtime(),
-                        error.javaClass.simpleName
-                    )
-                }
-            }
+            val gpuResults = runCatching { gpuSampler.sampleOnce().readings }
+                .getOrElse { emptyList() }
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 refreshButton.isEnabled = true
