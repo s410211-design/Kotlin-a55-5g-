@@ -27,10 +27,6 @@ data class DeviceProfile(
 )
 
 object DeviceProfileReader {
-    private val ONE_UI_PATTERN = Regex(
-        """(?i)One\\s*UI[\\s/_-]*([0-9]+(?:\\.[0-9]+){0,2})"""
-    )
-
     fun read(context: Context): DeviceProfile {
         val activityManager =
             context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
@@ -48,7 +44,7 @@ object DeviceProfileReader {
 
         val displayAndFingerprint = listOf(Build.DISPLAY.orEmpty(), Build.FINGERPRINT.orEmpty())
             .joinToString(" ")
-        val oneUiVersionHint = ONE_UI_PATTERN.find(displayAndFingerprint)?.groupValues?.get(1)
+        val oneUiVersionHint = OneUiVersionParser.parse(Build.DISPLAY, Build.FINGERPRINT)
 
         return DeviceProfile(
             manufacturer = Build.MANUFACTURER.orEmpty(),
