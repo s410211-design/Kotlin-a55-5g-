@@ -93,7 +93,7 @@
 - `/sys/class/devfreq/*gpu*/`
 - `/sys/class/devfreq/*sgpu*/`
 
-探測時必須區分「路徑不存在」、「權限拒絕」、「資料格式錯誤」、「暫時不可用」及「裝置不支援」。不得假設 DRM GPU 一定是 `card0)，應依 driver、name、symlink 等資訊辨識。
+探測時必須區分「路徑不存在」、「權限拒絕」、「資料格式錯誤」、「暫時不可用」及「裝置不支援」。不得假設 DRM GPU 一定是 `card0`，應依 driver、name、symlink 等資訊辨識。
 
 ### 4.3 數據計算與解讀
 - 若 GPU busy/total 是累積計數器，必須以兩次取樣的差值計算：`100 × Δbusy / Δtotal`。
@@ -104,6 +104,37 @@
 - 不可只靠單一 `gpu_model` 字串就斷定 GPU 型號。
 - 不可用粗糙正規表示式破壞小數、負號或單位資訊；數值解析必須明確且可測試。
 
+
+
+### 4.4 Exynos SGPU 社群核心研究紀錄（非零售韌體保證）
+
+已檢查 [Lyinceer/android_kernel_samsung_exynos_1480](https://github.com/Lyinceer/android_kernel_samsung_exynos_1480) 的 SGPU 相關原始碼，包含 `exynos_gpu_interface.c`、`sgpu_utilization.c` 及 `sgpu_user_interface.c`。此 Repository 僅作為理解 Exynos SGPU 實作的研究材料；它不是 SM-A5560 零售韌體的直接證據。
+
+研究觀察與實作限制：
+
+| 介面/欄位 | 社群核心原始碼觀察 | App 必須採取的處理 |
+|---|---|---|
+| `gpu_busy` | `gpu_busy_show()` 以核心目前的 `busy_time / total_time × 100` 產生百分比文字，不是直接輸出的累積 busy/total 雙計數器。 | 若實機節點回傳單一百分比，依百分比格式解析；不得再套用累積計數器差值算法。檢查資料範圍、分母與新鮮度。 |
+| `gpu_clock` | `gpu_clock_show()` 優先呼叫 `get_cur_freq`；失敗時可能回傳 `previous_freq`。 | 讀值可能是前次頻率，不能不加說明就標示為即時硬體頻率。資料來源或新鮮度不明時，標示為核心回報/可能為最後已知值。 |
+| `gpu_freq_table` | 對應可用 GPU operating points/frequency table。 | 只代表支援頻率集合，不代表目前頻率。 |
+| `utilization_source` | 該社群核心版本的預設來源為 `jiffies`；其 `hw_counter` 描述項的 `hw_source_valid` 為 `false`。 | 不可只因來源名稱包含 `hw_counter` 就宣稱是有效硬體計數器。需要同時讀取目前來源、可用來源，並確認該核心實作與實機結果。 |
+| `available_utilization_sources` | 列出可選來源名稱。 | 可用來源清單不等於目前啟用來源，也不等於來源已被驗證有效。 |
+
+核心介面中的百分比除法亦應視為需要防禦性檢查的邊界：App 對空值、零分母、非有限值、超出 0–100%、資料重置及解析錯誤都必須回報無效/暫時不可用，不能修飾成正常讀值。
+
+**不得將上述觀察直接推論為 SM-A5560 的零售核心行為。** 必須記錄實機型號、韌體/Build fingerprint、核心版本、實際節點路徑、讀取權限、原始格式及取樣時間，才可將該節點標記為已驗證。這些核心程式碼也不構成修改 GPU 頻率、`min_freq`、`max_freq` 或利用率來源的授權；任何新增寫入功能仍須另行提案、取得使用者同意，並通過安全與還原驗證。
+
+### 4.5 GPU 資料來源型別與一致性
+
+每個 GPU 來源都必須明確定義資料形狀與解析器，不可依檔名猜測後套用通用算法：
+
+- **Instant percentage：** 單次讀取即為百分比。檢查格式、範圍與時間戳；若來源本身已是核心計算後的百分比，不得再做差值。
+- **Cumulative counters：** 至少包含 busy 與 total 累積計數器；第一次取樣只建立基準，第二次起使用差值計算。計數器回退/重置、溢位、`Δtotal ≤ 0`、`Δbusy < 0` 或 `Δbusy > Δtotal` 都不能產生正常百分比。
+- **Cumulative time / vendor statistics：** 必須先確認核心定義、單位及時間基準，再用兩次取樣的差值計算；不可把毫秒、奈秒、jiffies 或其他時間單位混為一談。
+- **Current frequency：** 必須與頻率表分開解析，記錄單位、來源與讀取時間；只有能確認為當次即時讀值時才標示為即時。
+- **所有存取路徑共用同一解析邏輯：** 直接 sysfs 與 Shizuku shell 只改變讀取通道，不得改變數據的意義、單位或算法。尤其不得讓直接讀取使用差值，而 Shizuku fallback 改用累積值的絕對比例。
+- **探測精確節點：** 父目錄存在不能證明目標檔案存在。必須針對實際檔案與讀取結果分類；若權限限制使存在性無法確認，使用未知/受限狀態，不可武斷標示為 NotFound 或 PermissionDenied。
+
 ## 5. ADB、Shizuku 與權限準則
 
 - Shizuku/ADB shell 權限不等於 Root。
@@ -113,6 +144,18 @@
 - 重連使用有上限的指數退避；使用者停止服務後必須取消重試。
 - 不得把權限拒絕誤判成節點不存在，也不得把節點不存在誤判成權限拒絕。
 - 一般使用流程不得要求使用者自行輸入 shell 指令或節點路徑。
+
+
+### 5.1 Shell 命令安全閘門
+
+- Shell 存取必須經過集中管理的命令白名單，優先使用 sealed class/enum 等型別化命令；呼叫端不得直接傳入任意 shell 字串。
+- 每個命令都要有明確用途、允許的參數、路徑/套件名稱驗證、逾時、取消、退出碼、輸出長度上限及錯誤分類。
+- 禁止將 UI、Intent、外部檔案或未驗證資料直接串接到 shell 命令；需要傳入路徑時，先做正規化及允許根目錄檢查，並使用正確引用/參數傳遞方式。
+- 優先提供唯讀命令；任何寫入命令都必須在白名單中逐項審核，且遵守 Boost/還原契約。不得提供任意命令執行入口。
+- 分別追蹤 Shizuku Binder 是否存活、App 是否獲得授權、UserService 是否已綁定、遠端程序是否可用，以及單次命令是否成功；這些狀態不能合併成單一「Shizuku 已連線」。
+- Binder/Service 失效時，清除失效的遠端參照並停止受影響工作；重綁必須冪等、有逾時及有上限。不可在主執行緒等待 Binder 或 UserService。
+- stdout/stderr 必須限制長度；避免把 dumpsys、視窗標題、套件清單或使用者資料原文寫入 logcat。記錄診斷資訊時只保留必要且已去識別化的摘要。
+- AUTO/強制權限模式必須有明確政策；使用者選擇強制 Shizuku 時，不得在權限失效後默默降級成其他權限層級執行。
 
 ## 6. Boost、停止與還原的操作契約
 
@@ -197,7 +240,7 @@
 - 停止後所有背景工作與暫時資源都能清理。
 - 最終必須在 Galaxy A55 5G 實機驗證，不能只以模擬器通過作為完成依據。
 
-完整 AT-01 至 AT-16 驗收清單見 [docs/PROJECT_SPEC.md](docs/PROJECT_SPEC.md)。未通過的項目不得標示為完成；若受裝置或權限限制而無法測試，應標示「未驗證」及原因。
+完整 AT-01 至 AT-25 驗收清單見 [docs/PROJECT_SPEC.md](docs/PROJECT_SPEC.md)。未通過的項目不得標示為完成；若受裝置或權限限制而無法測試，應標示「未驗證」及原因。
 
 ## 11. 開發流程與工作方法
 
@@ -220,10 +263,15 @@
 - [GameCore](https://github.com/Dreamucxe/GameCore)：可研究 Kotlin、Shizuku、型別化感測器狀態與條件式還原設計。
 - [FusionHUD](https://github.com/The412Banner/FusionHUD)：可研究 HUD 與取樣分離、動態 GPU 路徑探測；使用其程式碼前必須遵守 GPL-3.0。
 - [Shizuku-API](https://github.com/RikkaApps/Shizuku-API)：作為 Shizuku API 與 Binder 生命週期的主要參考。
+- [DeviceInsight](https://github.com/zenithblue-oss/DeviceInsight)：可研究 FPS 資料來源分層、SurfaceFlinger layer 辨識、Shizuku shell gateway、來源快取失效及對應解析器測試。其舊版 SurfaceFlinger latency 解析方式不可直接當成 present-to-present FPS；gfxinfo 也不能一概代表 Vulkan/Native 遊戲 FPS。該專案採 GPL-3.0-or-later，引用/衍生程式碼前必須確認授權義務。
+- [MonitoredCheck](https://github.com/GenzPx/MonitoredCheck)：可研究 `Reading<T>` 狀態模型、硬體 Repository 分層、監控服務及單元測試結構。其 GPU `gpubusy` 絕對比例與刪除小數/負號的簡化解析方式不得直接複製。該專案採 MIT License。
 - [ShizukuPlus](https://github.com/thejaustin/ShizukuPlus)：可研究重連退避等設計，但不可假設背景監控永遠不會被 Samsung 系統終止。
 - [Exynos 1480 community kernel](https://github.com/Lyinceer/android_kernel_samsung_exynos_1480)：用於理解可能的 SGPU/sysfs 實作；社群核心資訊不代表零售韌體一定提供相同介面。
 
 授權與程式碼來源：
+- [FusionHUD](https://github.com/The412Banner/FusionHUD) 採 GPL-3.0，且其 Repository 的 `ATTRIBUTION.md` 宣告額外作者標示要求；若使用其程式碼，必須逐項確認 GPL-3.0 與該額外條款的適用性，並保留必要作者標示。HUD 程式碼中由 Winlator 渲染端 present callback 餵入的 FPS，不代表一般 Android App 可直接讀取第三方遊戲 FPS。
+- [DeviceInsight](https://github.com/zenithblue-oss/DeviceInsight) 採 GPL-3.0-or-later；若衍生或複製程式碼，必須遵守所選授權版本及相應散布義務。
+- [GameCore](https://github.com/Dreamucxe/GameCore)、[MonitoredCheck](https://github.com/GenzPx/MonitoredCheck) 與 [Shizuku-API](https://github.com/RikkaApps/Shizuku-API) 的已檢查 LICENSE 為 MIT；如使用其程式碼仍須保留原始版權與授權聲明。
 - 參考專案應優先學習架構與概念，不直接複製程式碼。
 - 複製、改寫或衍生任何程式碼前，必須先確認原始授權、著作權聲明及散布義務。
 - GPL-3.0 專案的衍生程式碼必須遵守 GPL-3.0；不得把受 GPL 約束的程式碼當成可任意改成其他授權。
