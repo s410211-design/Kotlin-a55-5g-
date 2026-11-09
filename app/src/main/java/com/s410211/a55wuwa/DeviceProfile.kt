@@ -15,6 +15,11 @@ data class DeviceProfile(
     val androidRelease: String,
     val sdkInt: Int,
     val securityPatch: String?,
+    val buildId: String,
+    val buildDisplay: String,
+    val buildFingerprint: String,
+    val kernelRelease: String?,
+    val oneUiVersionHint: String?,
     val totalRamBytes: Long?,
     val availableRamBytes: Long?,
     val totalStorageBytes: Long?,
@@ -22,6 +27,10 @@ data class DeviceProfile(
 )
 
 object DeviceProfileReader {
+    private val ONE_UI_PATTERN = Regex(
+        """(?i)One\\s*UI[\\s/_-]*([0-9]+(?:\\.[0-9]+){0,2})"""
+    )
+
     fun read(context: Context): DeviceProfile {
         val activityManager =
             context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
@@ -37,6 +46,10 @@ object DeviceProfileReader {
             }
         }.getOrNull()
 
+        val displayAndFingerprint = listOf(Build.DISPLAY.orEmpty(), Build.FINGERPRINT.orEmpty())
+            .joinToString(" ")
+        val oneUiVersionHint = ONE_UI_PATTERN.find(displayAndFingerprint)?.groupValues?.get(1)
+
         return DeviceProfile(
             manufacturer = Build.MANUFACTURER.orEmpty(),
             model = Build.MODEL.orEmpty(),
@@ -45,6 +58,11 @@ object DeviceProfileReader {
             androidRelease = Build.VERSION.RELEASE.orEmpty(),
             sdkInt = Build.VERSION.SDK_INT,
             securityPatch = Build.VERSION.SECURITY_PATCH.takeIf { it.isNotBlank() },
+            buildId = Build.ID.orEmpty(),
+            buildDisplay = Build.DISPLAY.orEmpty(),
+            buildFingerprint = Build.FINGERPRINT.orEmpty(),
+            kernelRelease = System.getProperty("os.version")?.takeIf { it.isNotBlank() },
+            oneUiVersionHint = oneUiVersionHint,
             totalRamBytes = totalRam,
             availableRamBytes = availableRam,
             totalStorageBytes = storage?.first,
