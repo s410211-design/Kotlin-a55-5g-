@@ -6,7 +6,9 @@ enum class GpuNodeRole {
     SUPPORTED_CLOCK_TABLE,
     TEMPERATURE_CANDIDATE,
     GPU_IDENTIFICATION,
-    MEMORY_INFORMATION
+    MEMORY_INFORMATION,
+    UTILIZATION_SOURCE,
+    AVAILABLE_UTILIZATION_SOURCES
 }
 
 data class GpuNodeCandidate(
@@ -50,6 +52,16 @@ object GpuNodeCatalog {
             "/sys/kernel/gpu/mem_info",
             GpuNodeRole.MEMORY_INFORMATION,
             "Format and units require device-side validation."
+        ),
+        GpuNodeCandidate(
+            "/sys/kernel/gpu/utilization_source",
+            GpuNodeRole.UTILIZATION_SOURCE,
+            "Current utilization source identifier; must be read together with the available-source list."
+        ),
+        GpuNodeCandidate(
+            "/sys/kernel/gpu/available_utilization_sources",
+            GpuNodeRole.AVAILABLE_UTILIZATION_SOURCES,
+            "Advertised choices do not prove that a hardware counter is active or valid."
         )
     )
 }
