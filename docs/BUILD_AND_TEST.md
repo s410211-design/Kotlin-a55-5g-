@@ -14,7 +14,7 @@ AGP 9.5.0 supports API 37 and requires Gradle 9.6.0 and JDK 17. AGP 9 enables bu
 
 ## Build locally
 
-1. Install Android Studio with Android SDK Platform 37 and Build Tools 36.0.0.
+1. Install Android Studio with the Android 17 (Cinnamon Bun Preview) SDK Platform and Build Tools 37.0.0. Use the preview channel in SDK Manager.
 2. Use JDK 17 for Gradle.
 3. Open this repository in Android Studio, or run:
 
