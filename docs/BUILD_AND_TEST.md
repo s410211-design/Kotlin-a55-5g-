@@ -34,7 +34,7 @@ app/build/outputs/apk/debug/app-debug.apk
 
 Target test device: Samsung Galaxy A55 5G, Taiwan model SM-A5560, Exynos 1480 / Xclipse 530. The supplied hardware configuration is 8 GB RAM and 256 GB storage. The app reads runtime memory and data-partition values from Android; those readings, not the nominal configuration, are the runtime evidence.
 
-The owner reports Android 17 / One UI 9 as the target OS. The app currently reads Android release and API level from public Android APIs. Runtime One UI identification remains pending.
+The owner reports Android 17 / One UI 9 as the target OS. The app reads Android release/API level, Build ID, Build display/fingerprint, and kernel release. It only displays a One UI version when an explicit version token is present in those public Build strings; otherwise it reports that the version could not be identified. The Shizuku-approved `ro.build.version.oneui` property is in the read-only command allowlist but is not queried until the Shizuku transport is integrated.
 
 ## Current implementation boundary
 
@@ -47,12 +47,13 @@ Included:
 - GPU frequency parser that requires an explicit, source-verified input unit before converting to Hz.
 - Bounded, read-only probe of the catalogued GPU sysfs candidates with errno-based result classification.
 - A single-worker, bounded-rate GPU sampler that runs only while the dashboard Activity is visible, isolates per-node failures, and is shared by the manual refresh path.
-- Typed read-only Shizuku command policy for fixed GPU-node and approved system-property reads; this defines the allowlist only and does not yet establish a Shizuku connection or execute shell commands.
+- Typed read-only Shizuku command policy for fixed GPU-node and approved system-property reads.
+- Bounded process executor with concurrent stdout/stderr draining, strict output caps, command deadlines, process termination, and explicit result states. The executor is transport-agnostic and is not yet wired to Shizuku.
 - Candidate GPU sysfs node catalog that does not claim retail-firmware availability.
 - JVM unit tests and GitHub Actions build/test workflow.
 
 Not yet included:
-- Shizuku Binder / UserService integration.
+- Shizuku Binder / UserService integration and runtime permission lifecycle.
 - Foreground monitoring service or HUD overlay.
 - Game package/layer identification and validated game FPS.
 - GPU/CPU setting writes, Boost journal or Restore.
