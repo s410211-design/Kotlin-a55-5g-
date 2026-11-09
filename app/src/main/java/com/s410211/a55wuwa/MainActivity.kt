@@ -214,6 +214,8 @@ class MainActivity : Activity() {
         com.s410211.a55wuwa.telemetry.GpuNodeRole.TEMPERATURE_CANDIDATE -> "GPU 溫度候選"
         com.s410211.a55wuwa.telemetry.GpuNodeRole.GPU_IDENTIFICATION -> "GPU 型號資訊"
         com.s410211.a55wuwa.telemetry.GpuNodeRole.MEMORY_INFORMATION -> "GPU 記憶體資訊"
+        com.s410211.a55wuwa.telemetry.GpuNodeRole.UTILIZATION_SOURCE -> "GPU 負載來源"
+        com.s410211.a55wuwa.telemetry.GpuNodeRole.AVAILABLE_UTILIZATION_SOURCES -> "GPU 可用負載來源"
     }
 
     private fun Reading<*>.statusLabel(): String = when (this) {
