@@ -22,7 +22,8 @@ class GpuTelemetrySampler(
     private val intervalMillis: Long = 1_000L,
     private val candidates: List<GpuNodeCandidate> = GpuNodeCatalog.candidates,
     private val reader: (GpuNodeCandidate, Long) -> Reading<String> =
-        { candidate, at -> GpuSysfsReader.read(candidate, at) }
+        { candidate, at -> GpuSysfsReader.read(candidate, at) },
+    private val clock: () -> Long = SystemClock::elapsedRealtime
 ) : AutoCloseable {
     private val executor: ScheduledExecutorService =
         Executors.newSingleThreadScheduledExecutor { runnable ->
@@ -47,24 +48,28 @@ class GpuTelemetrySampler(
         callback = onSample
         scheduledTask = executor.scheduleWithFixedDelay(
             {
-                val sampledAt = SystemClock.elapsedRealtime()
-                val readings = candidates.map { candidate ->
-                    candidate to runCatching { reader(candidate, sampledAt) }
-                        .getOrElse { error ->
-                            Reading.Error(
-                                candidate.path,
-                                sampledAt,
-                                error.javaClass.simpleName
-                            )
-                        }
-                }
+                val batch = sampleOnce()
                 val target = synchronized(this) { callback }
-                runCatching { target?.invoke(GpuSampleBatch(sampledAt, readings)) }
+                runCatching { target?.invoke(batch) }
             },
             0L,
             intervalMillis,
             TimeUnit.MILLISECONDS
         )
+    }
+
+    fun sampleOnce(sampledAtMillis: Long = clock()): GpuSampleBatch {
+        val readings = candidates.map { candidate ->
+            candidate to runCatching { reader(candidate, sampledAtMillis) }
+                .getOrElse { error ->
+                    Reading.Error(
+                        candidate.path,
+                        sampledAtMillis,
+                        error.javaClass.simpleName
+                    )
+                }
+        }
+        return GpuSampleBatch(sampledAtMillis, readings)
     }
 
     @Synchronized
