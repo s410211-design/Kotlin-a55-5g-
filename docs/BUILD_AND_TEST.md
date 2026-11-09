@@ -41,13 +41,15 @@ The owner reports Android 17 / One UI 9 as the target OS. The app currently read
 Included:
 - Launchable Android Activity.
 - Runtime device, RAM and internal data-partition profile.
+- Build ID, build display, full build fingerprint, kernel release, and conservative One UI build-string hint.
 - Explicit typed telemetry states.
 - Separate instant-percentage and cumulative-counter GPU utilization parsers.
+- GPU frequency parser that requires an explicit, source-verified input unit before converting to Hz.
+- Bounded, read-only probe of the catalogued GPU sysfs candidates with errno-based result classification.
 - Candidate GPU sysfs node catalog that does not claim retail-firmware availability.
 - JVM unit tests and GitHub Actions build/test workflow.
 
 Not yet included:
-- Direct sysfs probing and permission classification.
 - Shizuku Binder / UserService integration.
 - Foreground monitoring service or HUD overlay.
 - Game package/layer identification and validated game FPS.
