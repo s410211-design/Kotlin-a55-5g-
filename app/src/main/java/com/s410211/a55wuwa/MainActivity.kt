@@ -277,7 +277,7 @@ class MainActivity : Activity() {
         page.addView(card("A55 渲染最佳化狀態（GameManager／GPU）", status) { sessionStatusValueText = it })
         page.addView(card(
             "渲染設定與安全限制",
-            "目標裝置：SM-A5560／Exynos 1480／Xclipse 530／8GB RAM。預設 85% Backbuffer Downscale；90% 優先保留畫質，80% 加強 GPU 降載。只在 Android GameManager 支援且目前沒有既有介入設定時套用，並以 list-configs 讀回驗證；還原時先比對設定，外部變更不覆蓋。CPU/GPU sysfs 頻率節點先前在此機回報 EACCES，因此停止重複寫入；不修改電壓、不提高硬體上限、不停用原廠溫控。比例設定需重新啟動鳴潮生效。"
+            "目標裝置：SM-A5560／Exynos 1480／Xclipse 530／8GB RAM。預設 85% Backbuffer Downscale；90% 優先保留畫質，80% 加強 GPU 降載。優先使用 GameManager Performance；鳴潮未提供 Performance 時，改試 AOSP Custom 模式。只在目前沒有既有介入設定時套用，並以 list-configs 讀回驗證；還原時必須與本程式保存的設定完全一致，外部變更不覆蓋。CPU/GPU sysfs 頻率節點先前在此機回報 EACCES，因此停止重複寫入；不修改電壓、不提高硬體上限、不停用原廠溫控。比例設定需完全關閉並重啟鳴潮生效。"
         ))
         page.addView(sessionButton, marginParams(top = 8))
         page.addView(boost70Button, marginParams(top = 8))
