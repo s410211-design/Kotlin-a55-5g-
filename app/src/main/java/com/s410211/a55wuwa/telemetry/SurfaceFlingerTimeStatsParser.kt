@@ -13,8 +13,8 @@ data class GameFpsSnapshot(
  * are never used as fallback game FPS.
  */
 object SurfaceFlingerTimeStatsParser {
-    private val framesPattern = Regex("""(?m)^\\s*totalFrames\\s*=\\s*(\\d+)\\s*$""")
-    private val fpsPattern = Regex("""(?m)^\\s*averageFPS\\s*=\\s*([0-9]+(?:\\.[0-9]+)?)\\s*$""")
+    private val framesPattern = Regex("""(?m)^\s*totalFrames\s*=\s*(\d+)\s*$""")
+    private val fpsPattern = Regex("""(?m)^\s*averageFPS\s*=\s*([0-9]+(?:\.[0-9]+)?)\s*$""")
 
     fun parse(
         output: String,
