@@ -19,7 +19,7 @@ sealed interface GameModeOutcome {
 }
 
 /**
- * Applies an OEM-mediated Performance mode and Android WindowManager backbuffer
+ * Applies an OEM-mediated Performance or Custom mode and Android WindowManager backbuffer
  * downscale. Existing GameManager intervention configurations are never overwritten.
  */
 class GameModeController(context: Context, private val gateway: ShizukuGateway) {
@@ -37,11 +37,7 @@ class GameModeController(context: Context, private val gateway: ShizukuGateway) 
         }
 
         val before = readMode(packageName) ?: return@exclusive GameModeOutcome.Rejected(lastReadError)
-        if ("performance" !in before.second) {
-            return@exclusive GameModeOutcome.Rejected(
-                "此裝置未向鳴潮提供 Performance Mode（目前：${before.first}；可用：${before.second.joinToString()}）"
-            )
-        }
+        val targetMode = if ("performance" in before.second) "performance" else "custom"
 
         val originalConfig = readConfig(packageName)
             ?: return@exclusive GameModeOutcome.Rejected("無法讀取既有 GameManager 介入設定：$lastReadError")
@@ -56,6 +52,7 @@ class GameModeController(context: Context, private val gateway: ShizukuGateway) 
                 .putBoolean(KEY_PRESENT, true)
                 .putString(KEY_PACKAGE, packageName)
                 .putString(KEY_ORIGINAL_MODE, before.first)
+                .putString(KEY_TARGET_MODE, targetMode)
                 .putString(KEY_ORIGINAL_CONFIG, originalConfig)
                 .putString(KEY_DOWNSCALE, scale)
                 .putString(KEY_APPLIED_CONFIG, "")
@@ -65,7 +62,7 @@ class GameModeController(context: Context, private val gateway: ShizukuGateway) 
         }
 
         val downscale = gateway.setGameModeDownscale(
-            packageName, "performance", scale, SystemClock.elapsedRealtime()
+            packageName, targetMode, scale, SystemClock.elapsedRealtime()
         )
         if (downscale !is Reading.Value || downscale.value.trim() != scale) {
             val afterFailure = readConfig(packageName)
@@ -84,11 +81,11 @@ class GameModeController(context: Context, private val gateway: ShizukuGateway) 
             return@exclusive GameModeOutcome.Rejected("渲染比例已套用，但無法保存驗證記錄；請勿關閉服務")
         }
 
-        if (before.first != "performance") {
+        if (before.first != targetMode) {
             val changed = gateway.setGameMode(
-                packageName, "performance", SystemClock.elapsedRealtime()
+                packageName, targetMode, SystemClock.elapsedRealtime()
             )
-            if (changed !is Reading.Value || changed.value.trim() != "performance") {
+            if (changed !is Reading.Value || changed.value.trim() != targetMode) {
                 val rolledBack = restoreOwnedConfig(packageName)
                 if (rolledBack) clearJournal()
                 return@exclusive GameModeOutcome.Rejected(
@@ -99,7 +96,7 @@ class GameModeController(context: Context, private val gateway: ShizukuGateway) 
             }
         }
 
-        if (readMode(packageName)?.first != "performance") {
+        if (readMode(packageName)?.first != targetMode) {
             return@exclusive GameModeOutcome.Rejected("GameManager 模式讀回驗證失敗；保留還原記錄")
         }
 
@@ -134,12 +131,14 @@ class GameModeController(context: Context, private val gateway: ShizukuGateway) 
             else -> externalChange = true
         }
 
+        val targetMode = preferences.getString(KEY_TARGET_MODE, null)
+            ?: return@exclusive GameModeOutcome.Rejected("GameManager 還原記錄缺少目標模式")
         val currentMode = readMode(packageName)
             ?: return@exclusive GameModeOutcome.Rejected("無法讀取目前 GameManager 模式：$lastReadError")
         when {
             currentMode.first == originalMode -> Unit
-            currentMode.first == "performance" -> {
-                if (originalMode !in currentMode.second) {
+            currentMode.first == targetMode -> {
+                if (originalMode != "custom" && originalMode !in currentMode.second) {
                     return@exclusive GameModeOutcome.Rejected("原始模式已不再受支援，保留還原記錄")
                 }
                 val restored = gateway.setGameMode(
@@ -168,7 +167,8 @@ class GameModeController(context: Context, private val gateway: ShizukuGateway) 
         if (!isOwnedAppliedConfig(current)) return false
 
         val reset = gateway.resetGameModeConfig(
-            packageName, "performance", SystemClock.elapsedRealtime()
+            packageName, preferences.getString(KEY_TARGET_MODE, "performance") ?: "performance",
+            SystemClock.elapsedRealtime()
         )
         if (reset !is Reading.Value) {
             lastReadError = readingReason(reset)
@@ -196,7 +196,7 @@ class GameModeController(context: Context, private val gateway: ShizukuGateway) 
         val current = parts.getOrNull(0)?.trim().orEmpty()
         val available = parts.getOrNull(1).orEmpty().split(",")
             .map { it.trim() }.filter { it in SUPPORTED_MODES }.toSet()
-        if (current !in SUPPORTED_MODES || available.isEmpty()) {
+        if (current !in SUPPORTED_MODES) {
             lastReadError = "GameManager 回傳的模式資料格式無法辨識"
             return null
         }
@@ -260,6 +260,7 @@ class GameModeController(context: Context, private val gateway: ShizukuGateway) 
         const val KEY_PRESENT = "journal_present"
         const val KEY_PACKAGE = "package_name"
         const val KEY_ORIGINAL_MODE = "original_mode"
+        const val KEY_TARGET_MODE = "target_mode"
         const val KEY_ORIGINAL_CONFIG = "original_config"
         const val KEY_APPLIED_CONFIG = "applied_config"
         const val KEY_DOWNSCALE = "downscale_ratio"
