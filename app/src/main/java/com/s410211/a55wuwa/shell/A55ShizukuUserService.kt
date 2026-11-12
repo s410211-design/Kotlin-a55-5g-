@@ -205,7 +205,9 @@ class A55ShizukuUserService : IA55ShizukuService.Stub() {
         val before = queryGameMode(packageName)
         if (before[0] != STATUS_OK) return before
         val available = before.getOrNull(2).orEmpty().split(",").filter { it.isNotBlank() }
-        if (mode !in available) {
+        // AOSP exposes CUSTOM as a shell-selectable intervention mode even when
+        // the game does not advertise Performance mode in list-modes.
+        if (mode != "custom" && mode !in available) {
             return response(
                 STATUS_UNSUPPORTED,
                 rawValue = before.getOrNull(1).orEmpty(),
@@ -248,8 +250,8 @@ class A55ShizukuUserService : IA55ShizukuService.Stub() {
         if (!isValidPackageName(packageName)) {
             return response(STATUS_INVALID_DATA, detail = "Invalid game package name")
         }
-        if (mode != "performance") {
-            return response(STATUS_INVALID_DATA, detail = "Only Performance mode downscaling is allowed")
+        if (mode !in setOf("performance", "custom")) {
+            return response(STATUS_INVALID_DATA, detail = "Only Performance or Custom mode downscaling is allowed")
         }
         if (scale !in SUPPORTED_DOWNSCALE_RATIOS) {
             return response(STATUS_INVALID_DATA, detail = "Downscale ratio is not in the safe allowlist")
@@ -258,14 +260,14 @@ class A55ShizukuUserService : IA55ShizukuService.Stub() {
         val modes = queryGameMode(packageName)
         if (modes[0] != STATUS_OK) return modes
         val available = modes.getOrNull(2).orEmpty().split(",").filter { it.isNotBlank() }
-        if ("performance" !in available) {
+        if (mode != "custom" && mode !in available) {
             return response(STATUS_UNSUPPORTED, detail = "GameManager Performance mode is not advertised for this game")
         }
 
         val changed = runFixedCommand(
             listOf(
                 "/system/bin/cmd", "game", "set",
-                "--mode", "2",
+                "--mode", if (mode == "performance") "2" else "4",
                 "--downscale", scale,
                 packageName
             )
@@ -296,12 +298,18 @@ class A55ShizukuUserService : IA55ShizukuService.Stub() {
         if (!isValidPackageName(packageName)) {
             return response(STATUS_INVALID_DATA, detail = "Invalid game package name")
         }
-        if (mode != "performance") {
-            return response(STATUS_INVALID_DATA, detail = "Only Performance mode config can be reset")
+        if (mode !in setOf("performance", "custom")) {
+            return response(STATUS_INVALID_DATA, detail = "Only Performance or Custom mode config can be reset")
         }
-        val reset = runFixedCommand(
+        val resetArgs = if (mode == "performance") {
             listOf("/system/bin/cmd", "game", "reset", "--mode", "2", packageName)
-        )
+        } else {
+            // The AOSP reset parser supports only Performance and Battery filters.
+            // We had rejected every pre-existing intervention, so a full reset here
+            // removes only the Custom-mode override this controller just created.
+            listOf("/system/bin/cmd", "game", "reset", packageName)
+        }
+        val reset = runFixedCommand(resetArgs)
         if (reset[0] != STATUS_OK) return reset
         val after = queryGameModeConfig(packageName)
         if (after[0] != STATUS_OK) return after
@@ -326,9 +334,11 @@ class A55ShizukuUserService : IA55ShizukuService.Stub() {
             .map { it.trim().lowercase() }
             .filter { it in SUPPORTED_GAME_MODES }
             .distinct()
-        if (available.isEmpty()) {
-            return response(STATUS_UNSUPPORTED, rawValue = current, detail = "No supported GameManager modes advertised")
+        if (current !in SUPPORTED_GAME_MODES) {
+            return response(STATUS_UNSUPPORTED, detail = "GameManager current mode is not recognized")
         }
+        // An empty advertised list is still useful: the controller can try the
+        // AOSP Custom mode path, which is intentionally handled separately.
         return response(STATUS_OK, rawValue = current, detail = available.joinToString(","))
     }
 
