@@ -521,7 +521,7 @@ class PerformanceSessionService : Service() {
             6 -> "SHUTDOWN"
             else -> "未知"
         }
-        view.text = buildString {
+        val hudText = buildString {
             appendLine("A55 · 鳴潮 HUD")
             appendLine("GPU busy raw：${rawGpu("/sys/kernel/gpu/gpu_busy")}")
             appendLine("GPU clock raw：${rawGpu("/sys/kernel/gpu/gpu_clock")}")
@@ -533,6 +533,9 @@ class PerformanceSessionService : Service() {
             appendLine(if (cpuLoad >= 0f) String.format(java.util.Locale.US, "CPU 使用率：%.1f%%", cpuLoad) else "CPU 使用率：未取得")
             appendLine(fpsText)
             append("Thermal：$thermal")
+        }
+        mainHandler.post {
+            if (hudView === view) view.text = hudText
         }
     }
 
@@ -641,7 +644,7 @@ class PerformanceSessionService : Service() {
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentTitle("鳴潮效能監控")
             .setContentText("$sessionText · Thermal $thermal")
-            .setStyle(Notification.BigTextStyle().bigText("$sessionText\n熱狀態：$thermal\nBoost 只調整 CPU 最低頻率限制，不修改最高上限或溫控。"))
+            .setStyle(Notification.BigTextStyle().bigText("$sessionText\n熱狀態：$thermal\nBoost 只調整 CPU/GPU 最低頻率 floor，不提高最高上限、不改電壓或停用溫控。"))
             .setContentIntent(launchIntent)
             .setOngoing(true)
             .addAction(Notification.Action.Builder(android.R.drawable.ic_menu_revert, "還原 Boost", restoreIntent).build())
@@ -660,7 +663,7 @@ class PerformanceSessionService : Service() {
                     "效能監控服務",
                     NotificationManager.IMPORTANCE_LOW
                 ).apply {
-                    description = "鳴潮監控與 CPU Boost 狀態"
+                    description = "鳴潮監控與 CPU/GPU Boost 狀態"
                     setShowBadge(false)
                 }
             )
