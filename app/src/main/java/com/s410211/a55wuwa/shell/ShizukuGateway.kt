@@ -272,7 +272,7 @@ class ShizukuGateway(
      * Writes only through the UserService's explicit node allowlist. The
      * remote service validates live OPPs and policy maximum, then reads back.
      */
-    fun writeNode(path: String, value: String, sampledAtMillis: Long): Reading<String>? {
+    fun writeNode(path: String, value: String, expectedCurrentValue: String, sampledAtMillis: Long): Reading<String>? {
         val node = ShizukuNode.fromPath(path) ?: return Reading.Unsupported(
             path, sampledAtMillis, "寫入目標不在白名單"
         )
@@ -285,7 +285,7 @@ class ShizukuGateway(
             )
         }
         return try {
-            val response = service.writeNode(node.id, value)
+            val response = service.writeNode(node.id, value, expectedCurrentValue)
             val status = response.getOrNull(0).orEmpty()
             val raw = response.getOrNull(1).orEmpty()
             val detail = response.getOrNull(2).orEmpty().take(256)
@@ -302,7 +302,7 @@ class ShizukuGateway(
                 "UNSUPPORTED" -> Reading.Unsupported(
                     path, sampledAtMillis, detail.ifBlank { "控制節點不支援" }
                 )
-                "INVALID_DATA", "OUTPUT_TOO_LARGE" -> Reading.InvalidData(
+                "INVALID_DATA", "OUTPUT_TOO_LARGE", "EXTERNAL_CHANGE" -> Reading.InvalidData(
                     path, sampledAtMillis, detail.ifBlank { "寫入值不符合控制規則" }
                 )
                 "TEMPORARY" -> Reading.TemporarilyUnavailable(
