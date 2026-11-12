@@ -52,6 +52,7 @@ class PerformanceSessionService : Service() {
     private lateinit var boostController: CpuBoostController
     private lateinit var gpuBoostController: GpuBoostController
     private lateinit var scheduler: ScheduledExecutorService
+    private lateinit var fpsScheduler: ScheduledExecutorService
     private lateinit var operations: ExecutorService
     private var sampleTask: ScheduledFuture<*>? = null
     private var fpsTask: ScheduledFuture<*>? = null
@@ -74,6 +75,9 @@ class PerformanceSessionService : Service() {
         createNotificationChannel()
         scheduler = Executors.newSingleThreadScheduledExecutor { task ->
             Thread(task, "a55-session-monitor").apply { isDaemon = true }
+        }
+        fpsScheduler = Executors.newSingleThreadScheduledExecutor { task ->
+            Thread(task, "a55-session-fps").apply { isDaemon = true }
         }
         operations = Executors.newSingleThreadExecutor { task ->
             Thread(task, "a55-session-operations").apply { isDaemon = true }
@@ -355,7 +359,7 @@ class PerformanceSessionService : Service() {
         lastFpsSampleAt = null
         setFpsStatus("已開始擷取 SurfaceFlinger 遊戲 layer：$packageName")
         fpsTask?.cancel(true)
-        fpsTask = scheduler.scheduleWithFixedDelay(
+        fpsTask = fpsScheduler.scheduleWithFixedDelay(
             { runCatching { sampleGameFps(packageName) } },
             0L,
             FPS_SAMPLE_INTERVAL_MS,
@@ -679,6 +683,7 @@ class PerformanceSessionService : Service() {
         getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE)
             .edit().putBoolean("service_active", false).apply()
         scheduler.shutdownNow()
+        fpsScheduler.shutdownNow()
         operations.shutdownNow()
         gateway.close()
         super.onDestroy()
