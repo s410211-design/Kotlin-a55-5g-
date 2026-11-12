@@ -57,6 +57,7 @@ class PerformanceSessionService : Service() {
     private var fpsTask: ScheduledFuture<*>? = null
     @Volatile private var fpsCaptureActive = false
     @Volatile private var fpsCaptureRequested = false
+    @Volatile private var fpsStopRequested = false
     @Volatile private var lastFpsTotalFrames: Long? = null
     @Volatile private var lastFpsSampleAt: Long? = null
     private val thermalRestoreQueued = AtomicBoolean(false)
@@ -80,8 +81,9 @@ class PerformanceSessionService : Service() {
         val sharedGateway = gatewayPlaceholder()
         boostController = CpuBoostController(applicationContext, sharedGateway)
         gpuBoostController = GpuBoostController(applicationContext, sharedGateway)
-        fpsCaptureRequested = getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE)
-            .getBoolean("fps_capture_requested", false)
+        val savedFpsPreferences = getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE)
+        fpsCaptureRequested = savedFpsPreferences.getBoolean("fps_capture_requested", false)
+        fpsStopRequested = savedFpsPreferences.getBoolean("fps_stop_requested", false)
         gateway.start()
         if (hasPendingBoostJournal()) {
             sessionText = "偵測到待還原的 CPU Boost 記錄"
@@ -103,7 +105,9 @@ class PerformanceSessionService : Service() {
                     updateNotification()
                 }
             }
-            if (state.userServiceConnected && fpsCaptureRequested && !fpsCaptureActive) {
+            if (state.userServiceConnected && fpsStopRequested) {
+                operations.execute { stopFpsCapture() }
+            } else if (state.userServiceConnected && fpsCaptureRequested && !fpsCaptureActive) {
                 operations.execute { startFpsCapture() }
             }
         }
@@ -132,9 +136,13 @@ class PerformanceSessionService : Service() {
                 updateNotification()
             }
             ACTION_START_FPS -> {
+                fpsStopRequested = false
                 fpsCaptureRequested = true
                 getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE)
-                    .edit().putBoolean("fps_capture_requested", true).apply()
+                    .edit()
+                    .putBoolean("fps_capture_requested", true)
+                    .putBoolean("fps_stop_requested", false)
+                    .apply()
                 operations.execute {
                     if (!awaitUserService()) {
                         setFpsStatus("FPS 未啟動：Shizuku UserService 未連線")
@@ -144,6 +152,9 @@ class PerformanceSessionService : Service() {
                 }
             }
             ACTION_STOP_FPS -> operations.execute {
+                fpsStopRequested = true
+                getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE)
+                    .edit().putBoolean("fps_stop_requested", true).apply()
                 if (!stopFpsCapture()) {
                     sessionText = "FPS 停止尚未完成：" +
                         (getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE)
@@ -174,7 +185,12 @@ class PerformanceSessionService : Service() {
                 updateNotification()
             }
             ACTION_STOP -> operations.execute {
-                if ((fpsCaptureRequested || fpsCaptureActive) && !awaitUserService()) {
+                if (fpsCaptureRequested || fpsCaptureActive) {
+                    fpsStopRequested = true
+                    getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE)
+                        .edit().putBoolean("fps_stop_requested", true).apply()
+                }
+                if ((fpsCaptureRequested || fpsCaptureActive || fpsStopRequested) && !awaitUserService()) {
                     sessionText = "停止暫緩：FPS 擷取仍需要 Shizuku 送出 disable"
                     updateNotification()
                     return@execute
@@ -334,6 +350,7 @@ class PerformanceSessionService : Service() {
         }
         fpsCaptureActive = true
         fpsCaptureRequested = true
+        fpsStopRequested = false
         lastFpsTotalFrames = null
         lastFpsSampleAt = null
         setFpsStatus("已開始擷取 SurfaceFlinger 遊戲 layer：$packageName")
@@ -385,7 +402,7 @@ class PerformanceSessionService : Service() {
     }
 
     private fun stopFpsCapture(): Boolean {
-        if (fpsCaptureRequested || fpsCaptureActive) {
+        if (fpsCaptureRequested || fpsCaptureActive || fpsStopRequested) {
             val stopResult = gateway.stopSurfaceFlingerTimeStats(SystemClock.elapsedRealtime())
             if (stopResult !is Reading.Value) {
                 setFpsStatus("無法確認 timestats 已停用：" + readingReason(stopResult))
@@ -396,11 +413,13 @@ class PerformanceSessionService : Service() {
         fpsTask = null
         fpsCaptureActive = false
         fpsCaptureRequested = false
+        fpsStopRequested = false
         lastFpsTotalFrames = null
         lastFpsSampleAt = null
         getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE)
             .edit()
             .putBoolean("fps_capture_requested", false)
+            .putBoolean("fps_stop_requested", false)
             .putString("fps_status", "FPS 擷取已停止")
             .remove("fps_window")
             .apply()
