@@ -5,7 +5,7 @@ interface IA55ShizukuService {
     void destroy() = 16777114;
     void exit() = 1;
 
-    // Returns [status, rawValue, detail]. nodeId must be in ShizukuNodeCatalog.
+    // Returns [status, rawValue, detail]. nodeId must be in ShizukuNode.
     String[] readNode(int nodeId) = 2;
 
     // Returns [uid, pid, SELinux context].
