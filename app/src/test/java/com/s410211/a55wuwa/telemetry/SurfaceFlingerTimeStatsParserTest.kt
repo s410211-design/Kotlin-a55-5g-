@@ -27,7 +27,27 @@ class SurfaceFlingerTimeStatsParserTest {
         val value = (result as Reading.Value<GameFpsSnapshot>).value
         assertEquals(120L, value.totalFrames)
         assertEquals(59.87, value.cumulativeAverageFps, 0.001)
+        assertEquals(0.0, value.slow20FpsPercent!!, 0.001)
+        assertEquals(0.0, value.slow30FpsPercent!!, 0.001)
         assertTrue(value.layerName.contains("com.kurogame.wutheringwaves.global"))
+    }
+
+    @Test
+    fun calculatesSlowFramePercentagesFromPresentToPresentHistogram() {
+        val output = """
+            layerName = SurfaceView[com.kurogame.wutheringwaves.global/MainActivity]@0(BLAST)#7
+            totalFrames = 100
+            averageFPS = 45.0
+            presentToPresent histogram is as below:
+            16ms=70 34ms=10 54ms=20
+        """.trimIndent()
+        val result = SurfaceFlingerTimeStatsParser.parse(
+            output,
+            "com.kurogame.wutheringwaves.global",
+            1L
+        ) as Reading.Value<GameFpsSnapshot>
+        assertEquals(20.0, result.value.slow20FpsPercent!!, 0.001)
+        assertEquals(30.0, result.value.slow30FpsPercent!!, 0.001)
     }
 
     @Test
