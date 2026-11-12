@@ -5,10 +5,17 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.graphics.Color
+import android.graphics.PixelFormat
+import android.graphics.drawable.GradientDrawable
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.provider.Settings
+import android.view.Gravity
+import android.view.WindowManager
+import android.widget.TextView
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -41,6 +48,8 @@ class PerformanceSessionService : Service() {
     private lateinit var operations: ExecutorService
     private var sampleTask: ScheduledFuture<*>? = null
     private val thermalRestoreQueued = AtomicBoolean(false)
+    private var hudView: TextView? = null
+    private var windowManager: WindowManager? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     @Volatile private var lastThermalRestoreAttemptStatus: Int = -1
     @Volatile private var sessionText: String = "準備中"
@@ -86,9 +95,21 @@ class PerformanceSessionService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         enterForeground()
         startSampling()
+        getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE)
+            .edit().putBoolean("service_active", true).apply()
         when (intent?.action ?: ACTION_START) {
             ACTION_START -> {
                 sessionText = "監控服務執行中"
+                updateNotification()
+            }
+            ACTION_SHOW_HUD -> {
+                if (showHud()) sessionText = "監控與 HUD 執行中"
+                else sessionText = "HUD 未顯示：尚未授予懸浮視窗權限"
+                updateNotification()
+            }
+            ACTION_HIDE_HUD -> {
+                hideHud()
+                sessionText = "HUD 已隱藏"
                 updateNotification()
             }
             ACTION_BOOST -> {
@@ -127,6 +148,9 @@ class PerformanceSessionService : Service() {
                 }
                 mainHandler.post {
                     stopSampling()
+                    hideHud()
+                    getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE)
+                        .edit().putBoolean("service_active", false).apply()
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     stopSelf(startId)
                 }
@@ -212,7 +236,86 @@ class PerformanceSessionService : Service() {
                 }
             }
         }
+        updateHud()
         if (lastThermalStatus != previousThermalStatus) updateNotification()
+    }
+
+    private fun showHud(): Boolean {
+        if (!Settings.canDrawOverlays(this)) return false
+        if (hudView != null) return true
+        val manager = getSystemService(WINDOW_SERVICE) as WindowManager
+        val view = TextView(this).apply {
+            setTextColor(Color.WHITE)
+            textSize = 12f
+            setPadding(14, 10, 14, 10)
+            background = GradientDrawable().apply {
+                setColor(0xDD101820.toInt())
+                cornerRadius = 18f
+                setStroke(1, 0xFF78E0BD.toInt())
+            }
+            text = "A55 HUD\n等待第一筆樣本"
+        }
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.END
+            x = 12
+            y = 140
+        }
+        return try {
+            manager.addView(view, params)
+            windowManager = manager
+            hudView = view
+            updateHud()
+            true
+        } catch (_: Exception) {
+            hudView = null
+            windowManager = null
+            false
+        }
+    }
+
+    private fun hideHud() {
+        val view = hudView ?: return
+        runCatching { windowManager?.removeView(view) }
+        hudView = null
+        windowManager = null
+    }
+
+    private fun updateHud() {
+        val view = hudView ?: return
+        val prefs = getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE)
+        fun rawGpu(path: String): String =
+            prefs.getString("gpu_" + path.hashCode(), null)?.take(24) ?: "—"
+        fun cpuMHz(index: Int): String {
+            val khz = prefs.getString("cpu_policy_$index", null)?.toLongOrNull()
+                ?: return "—"
+            return String.format(java.util.Locale.US, "%.0f MHz", khz / 1_000.0)
+        }
+        val thermal = when (prefs.getInt("thermal_status", -1)) {
+            0 -> "NONE"
+            1 -> "LIGHT"
+            2 -> "MODERATE"
+            3 -> "SEVERE"
+            4 -> "CRITICAL"
+            5 -> "EMERGENCY"
+            6 -> "SHUTDOWN"
+            else -> "未知"
+        }
+        view.text = buildString {
+            appendLine("A55 · 鳴潮 HUD")
+            appendLine("GPU busy raw：${rawGpu("/sys/kernel/gpu/gpu_busy")}")
+            appendLine("GPU clock raw：${rawGpu("/sys/kernel/gpu/gpu_clock")}")
+            appendLine("CPU policy0：${cpuMHz(0)}")
+            appendLine("CPU policy4：${cpuMHz(1)}")
+            append("Thermal：$thermal")
+        }
     }
 
     private fun awaitUserService(): Boolean {
@@ -300,6 +403,9 @@ class PerformanceSessionService : Service() {
 
     override fun onDestroy() {
         stopSampling()
+        hideHud()
+        getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE)
+            .edit().putBoolean("service_active", false).apply()
         scheduler.shutdownNow()
         operations.shutdownNow()
         gateway.close()
@@ -311,6 +417,8 @@ class PerformanceSessionService : Service() {
         const val ACTION_BOOST = "com.s410211.a55wuwa.action.BOOST"
         const val ACTION_RESTORE = "com.s410211.a55wuwa.action.RESTORE"
         const val ACTION_STOP = "com.s410211.a55wuwa.action.STOP"
+        const val ACTION_SHOW_HUD = "com.s410211.a55wuwa.action.SHOW_HUD"
+        const val ACTION_HIDE_HUD = "com.s410211.a55wuwa.action.HIDE_HUD"
         const val EXTRA_PERCENT = "boost_percent"
         const val DEFAULT_PERCENT = 80
         const val SNAPSHOT_PREFS = "performance_session_snapshot"
