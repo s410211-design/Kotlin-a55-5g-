@@ -277,12 +277,12 @@ class PerformanceSessionService : Service() {
         }
 
         val health = DeviceHealthReader.read(this)
-        health.batteryLevelPercent?.let { snapshot.putInt("battery_level", it) }
-        health.batteryTemperatureCelsius?.let { snapshot.putFloat("battery_temp_c", it.toFloat()) }
-        health.batteryVoltageMillivolts?.let { snapshot.putInt("battery_voltage_mv", it) }
-        health.charging?.let { snapshot.putBoolean("battery_charging", it) }
-        health.networkTransport?.let { snapshot.putString("network_transport", it) }
-        health.networkValidated?.let { snapshot.putBoolean("network_validated", it) }
+        snapshot.putInt("battery_level", health.batteryLevelPercent ?: -1)
+        snapshot.putFloat("battery_temp_c", health.batteryTemperatureCelsius?.toFloat() ?: -1f)
+        snapshot.putInt("battery_voltage_mv", health.batteryVoltageMillivolts ?: -1)
+        snapshot.putInt("battery_charging", when (health.charging) { true -> 1; false -> 0; null -> -1 })
+        snapshot.putString("network_transport", health.networkTransport ?: "未連線／未知")
+        snapshot.putInt("network_validated", when (health.networkValidated) { true -> 1; false -> 0; null -> -1 })
 
         when (val thermal = ThermalStatusReader.read(this, at)) {
             is Reading.Value -> {
