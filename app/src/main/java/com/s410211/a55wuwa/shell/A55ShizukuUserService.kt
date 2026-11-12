@@ -122,6 +122,16 @@ class A55ShizukuUserService : IA55ShizukuService.Stub() {
                 )
             }
 
+            val currentBeforeWrite = readNodeText(control.path).toLongOrNull()
+                ?: return response(STATUS_INVALID_DATA, detail = "Invalid ${control.label} pre-write value")
+            if (currentBeforeWrite != expectedCurrent) {
+                return response(
+                    STATUS_EXTERNAL_CHANGE,
+                    rawValue = currentBeforeWrite.toString(),
+                    detail = "${control.label} changed before write; refusing to overwrite"
+                )
+            }
+
             val fd = Os.open(control.path, OsConstants.O_WRONLY, 0)
             try {
                 val bytes = "$requested\n".toByteArray(Charsets.US_ASCII)
