@@ -15,15 +15,27 @@ import android.widget.TextView
 import com.s410211.a55wuwa.telemetry.GpuNodeCandidate
 import com.s410211.a55wuwa.telemetry.GpuSampleBatch
 import com.s410211.a55wuwa.telemetry.GpuTelemetrySampler
+import com.s410211.a55wuwa.telemetry.CpuFrequencyPolicy
+import com.s410211.a55wuwa.telemetry.CpuSampleBatch
+import com.s410211.a55wuwa.telemetry.CpuTelemetrySampler
+import com.s410211.a55wuwa.telemetry.InstantPercentageParser
+import com.s410211.a55wuwa.telemetry.ThermalStatusReader
+import com.s410211.a55wuwa.telemetry.ThermalStatusSnapshot
 import com.s410211.a55wuwa.telemetry.Reading
+import java.util.Locale
 import java.util.concurrent.Executors
 
 class MainActivity : Activity() {
     private val ioExecutor = Executors.newSingleThreadExecutor()
     private val gpuSampler = GpuTelemetrySampler(intervalMillis = 1_000L)
+    private val cpuSampler = CpuTelemetrySampler(intervalMillis = 1_000L)
     private var activityVisible = false
     private var latestGpuResults: List<Pair<GpuNodeCandidate, Reading<String>>>? = null
+    private var latestCpuResults: List<Pair<CpuFrequencyPolicy, Reading<Long>>>? = null
+    private var latestThermalReading: Reading<ThermalStatusSnapshot>? = null
     private var gpuValueText: TextView? = null
+    private var cpuValueText: TextView? = null
+    private var thermalValueText: TextView? = null
     private lateinit var page: LinearLayout
     private lateinit var refreshButton: Button
 
@@ -106,6 +118,8 @@ class MainActivity : Activity() {
         gpuResults: List<Pair<GpuNodeCandidate, Reading<String>>>
     ) {
         gpuValueText = null
+        cpuValueText = null
+        thermalValueText = null
         page.removeAllViews()
         page.addView(label("A55 PERFORMANCE LAB", 12, Color.rgb(120, 224, 189), true))
         page.addView(title("鳴潮效能監控"))
@@ -159,6 +173,18 @@ class MainActivity : Activity() {
             ) { gpuValueText = it }
         )
 
+        page.addView(
+            card(
+                "CPU 頻率（CPUFreq policy）",
+                formatCpuReadings(latestCpuResults)
+            ) { cpuValueText = it }
+        )
+        page.addView(
+            card(
+                "Android Thermal API",
+                formatThermalReading(latestThermalReading)
+            ) { thermalValueText = it }
+        )
 
         page.addView(card(
             "遊戲 FPS",
@@ -196,6 +222,18 @@ class MainActivity : Activity() {
             if (reading is Reading.Value) {
                 appendLine()
                 append("原始資料：${reading.value.toSafeDisplay()}")
+                if (candidate.role == com.s410211.a55wuwa.telemetry.GpuNodeRole.UTILIZATION_CANDIDATE) {
+                    when (val parsed = InstantPercentageParser.parse(
+                        reading.value,
+                        candidate.path,
+                        reading.sampledAtMillis
+                    )) {
+                        is Reading.Value -> appendLine(
+                            "\n候選百分比解析：${String.format(Locale.US, "%.1f", parsed.value)}%（原始單點格式；硬體計數器來源尚未驗證）"
+                        )
+                        else -> appendLine("\n百分比解析：${parsed.statusLabel()}")
+                    }
+                }
             } else {
                 val reason = when (reading) {
                     is Reading.AwaitingSample -> reading.reason
@@ -215,6 +253,63 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun formatCpuReadings(
+        results: List<Pair<CpuFrequencyPolicy, Reading<Long>>>?
+    ): String = buildString {
+        if (results.isNullOrEmpty()) {
+            append("等待第一筆 CPU policy 樣本")
+            return@buildString
+        }
+        appendLine("頻率來源：scaling_cur_freq（核心回報值；不保證等於即時硬體時鐘）")
+        results.forEach { (policy, reading) ->
+            appendLine()
+            appendLine(policy.label + "（" + policy.id + "）")
+            when (reading) {
+                is Reading.Value -> {
+                    val mhz = reading.value.toDouble() / 1_000_000.0
+                    append("核心回報頻率：${String.format(Locale.US, "%.1f", mhz)} MHz")
+                }
+                else -> {
+                    append(reading.statusLabel())
+                    val reason = reading.reasonOrNull()
+                    if (!reason.isNullOrBlank()) append("\n原因：$reason")
+                }
+            }
+        }
+    }
+
+    private fun formatThermalReading(reading: Reading<ThermalStatusSnapshot>?): String {
+        if (reading == null) return "等待 Android Thermal API 樣本"
+        return when (reading) {
+            is Reading.Value -> buildString {
+                appendLine("整機熱狀態：${reading.value.statusLabel}（${reading.value.status}）")
+                if (reading.value.headroom != null) {
+                    append("Thermal headroom：${String.format(Locale.US, "%.3f", reading.value.headroom)}")
+                    append("\n注意：這是熱餘裕估計值，不是攝氏溫度或 GPU 負載百分比。")
+                } else {
+                    append("Thermal headroom：${reading.value.headroomNote ?: "系統未提供"}")
+                }
+                append("\n此公開 API 不回傳 AP／GPU／BAT／PA／SKIN 個別感測器溫度。")
+            }
+            else -> buildString {
+                append(reading.statusLabel())
+                val reason = reading.reasonOrNull()
+                if (!reason.isNullOrBlank()) append("\n原因：$reason")
+            }
+        }
+    }
+
+    private fun Reading<*>.reasonOrNull(): String? = when (this) {
+        is Reading.AwaitingSample -> reason
+        is Reading.Unsupported -> reason
+        is Reading.PermissionDenied -> reason
+        is Reading.NotFound -> reason
+        is Reading.InvalidData -> reason
+        is Reading.TemporarilyUnavailable -> reason
+        is Reading.Error -> reason
+        is Reading.Value -> null
+    }
+
     private fun GpuNodeCandidate.roleLabel(): String = when (role) {
         com.s410211.a55wuwa.telemetry.GpuNodeRole.UTILIZATION_CANDIDATE -> "GPU 負載候選"
         com.s410211.a55wuwa.telemetry.GpuNodeRole.CURRENT_CLOCK_CANDIDATE -> "GPU 當前頻率候選"
@@ -224,6 +319,9 @@ class MainActivity : Activity() {
         com.s410211.a55wuwa.telemetry.GpuNodeRole.MEMORY_INFORMATION -> "GPU 記憶體資訊"
         com.s410211.a55wuwa.telemetry.GpuNodeRole.UTILIZATION_SOURCE -> "GPU 負載來源"
         com.s410211.a55wuwa.telemetry.GpuNodeRole.AVAILABLE_UTILIZATION_SOURCES -> "GPU 可用負載來源"
+        com.s410211.a55wuwa.telemetry.GpuNodeRole.MINIMUM_CLOCK_LIMIT -> "GPU 最低頻率限制（唯讀）"
+        com.s410211.a55wuwa.telemetry.GpuNodeRole.MAXIMUM_CLOCK_LIMIT -> "GPU 最高頻率限制（唯讀）"
+        com.s410211.a55wuwa.telemetry.GpuNodeRole.TARGET_CLOCK_CANDIDATE -> "GPU 目標頻率候選"
     }
 
     private fun Reading<*>.statusLabel(): String = when (this) {
@@ -313,16 +411,28 @@ class MainActivity : Activity() {
                 gpuValueText?.text = formatGpuReadings(batch.readings, batch.sampledAtMillis)
             }
         }
+        cpuSampler.start { batch: CpuSampleBatch ->
+            val thermalReading = ThermalStatusReader.read(applicationContext, batch.sampledAtMillis)
+            runOnUiThread {
+                if (!activityVisible || isFinishing || isDestroyed) return@runOnUiThread
+                latestCpuResults = batch.readings
+                latestThermalReading = thermalReading
+                cpuValueText?.text = formatCpuReadings(batch.readings)
+                thermalValueText?.text = formatThermalReading(thermalReading)
+            }
+        }
     }
 
     override fun onStop() {
         activityVisible = false
         gpuSampler.stop()
+        cpuSampler.stop()
         super.onStop()
     }
 
     override fun onDestroy() {
         gpuSampler.close()
+        cpuSampler.close()
         ioExecutor.shutdownNow()
         super.onDestroy()
     }
