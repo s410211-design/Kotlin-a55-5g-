@@ -17,11 +17,11 @@ object LinuxErrnoMapper {
     private const val EAGAIN = 11
     private const val EACCES = 13
 
-    fun toReading(
+    fun <T> toReading(
         errno: Int,
         source: String,
         sampledAtMillis: Long
-    ): Reading<String> = when (errno) {
+    ): Reading<T> = when (errno) {
         EPERM, EACCES -> Reading.PermissionDenied(
             source,
             sampledAtMillis,
