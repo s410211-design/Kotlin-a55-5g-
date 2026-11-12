@@ -362,6 +362,11 @@ class PerformanceSessionService : Service() {
                 setFpsStatus("尚未選取鳴潮套件；請先透過啟動器按鈕啟動遊戲")
                 return
             }
+            prefs.edit()
+                .remove("fps_cumulative")
+                .remove("fps_total_frames")
+                .remove("fps_layer")
+                .apply()
             val result = gateway.startSurfaceFlingerTimeStats(
                 packageName,
                 SystemClock.elapsedRealtime()
