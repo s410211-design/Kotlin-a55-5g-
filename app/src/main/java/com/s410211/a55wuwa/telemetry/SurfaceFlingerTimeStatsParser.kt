@@ -95,6 +95,8 @@ object SurfaceFlingerTimeStatsParser {
         thresholdMillis: Int
     ): Double? {
         if (totalFrames <= 0L) return null
+        val histogramFrames = histogram.values.sum()
+        if (histogramFrames <= 0L || histogramFrames > totalFrames) return null
         val slowFrames = histogram.filterKeys { it >= thresholdMillis }.values.sum()
         if (slowFrames < 0L || slowFrames > totalFrames) return null
         return (slowFrames.toDouble() / totalFrames.toDouble()) * 100.0
