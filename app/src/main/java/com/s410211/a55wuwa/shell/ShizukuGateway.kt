@@ -33,7 +33,7 @@ data class ShizukuGatewayState(
             appendLine("UserService：" + if (userServiceConnected) "已連線" else "未連線")
             append("執行身分：" + identity)
             if (pid != null) append("／PID " + pid)
-            if (!selinuxContext.isNullOrBlank()) appendLine("\\nSELinux：" + selinuxContext)
+            if (!selinuxContext.isNullOrBlank()) appendLine("\nSELinux：" + selinuxContext)
             append("\\n狀態：" + detail)
         }
     }
