@@ -1,0 +1,173 @@
+# SM-A5560 ADB 實機診斷紀錄
+
+> 狀態：第一輪 ADB 探測紀錄（2026-11-12）。本文件只記錄使用者提供的 Windows CMD / ADB 輸出；不是完整硬體鑑定，也不代表 GPU 即時監控已通過驗證。未取得明確輸出的欄位一律標示為待確認。
+
+## 1. 測試環境
+
+| 項目 | 已知資訊 | 狀態 |
+|---|---|---|
+| 電腦作業系統 | Windows 10.0.26200（ADB 終端輸出） | 已確認 |
+| ADB | Android Debug Bridge 1.0.41 | 已確認 |
+| Platform Tools | 37.0.1-15733141 | 已確認 |
+| ADB 執行位置 | D:\\platform-tools-latest-windows\\platform-tools\\adb.exe | 已確認 |
+| USB 裝置狀態 | device | 已確認；公開文件省略完整 serial |
+| 手機型號 | SM-A5560 | 已確認 |
+| Android 版本 / API | 未取得可獨立辨識輸出 | 待確認 |
+| One UI 版本 | 未取得可獨立辨識輸出 | 待確認 |
+| Build fingerprint / security patch | 未取得可獨立辨識輸出 | 待確認 |
+| Kernel 版本 | 未取得可獨立辨識輸出 | 待確認 |
+| SoC / GPU 型號 | 本輪未取得可獨立辨識的屬性值 | 待確認；不可預填成實測結果 |
+
+## 2. ADB 連線與 Shell 身分
+
+### 2.1 ADB 連線
+
+使用者輸出顯示 ADB daemon 啟動成功，裝置狀態為 device。這證明 ADB transport 可用，不代表每個 Android 系統節點都允許讀取。
+
+### 2.2 Shell 身分
+
+使用者提供的 adb shell id 輸出包含：
+
+~~~text
+uid=2000(shell) gid=2000(shell)
+context=u:r:shell:s0
+~~~
+
+判定：目前命令以 Android shell UID 2000 執行，不是 Root（UID 0）。即使檔案 Unix mode 顯示可讀，SELinux 仍可能額外拒絕存取。本輪沒有取得可獨立辨識的 getenforce 回傳值，因此 SELinux enforcing/permissive 狀態待確認。id 輸出中列出的群組包含 input、log、adb、sdcard_rw、sdcard_r、readproc、readtracefs 等；不能確定 groups 指令是否另有獨立成功輸出。
+
+## 3. GPU sysfs 探測
+
+### 3.1 GPU 目錄
+
+adb shell ls -l /sys/kernel/gpu/ 成功列出目錄內容，證明該目錄存在且 shell 能列出其項目。
+
+| 節點 | 清單中可見 | 實際 cat 結果 |
+|---|---:|---|
+| gpu_busy | 是 | 尚無可獨立辨識的輸出 |
+| gpu_clock | 是 | 尚無可獨立辨識的輸出 |
+| gpu_freq_table | 是 | 尚無可獨立辨識的輸出 |
+| gpu_tmu | 是 | 尚無可獨立辨識的輸出 |
+| gpu_model | 是 | 尚無可獨立辨識的輸出 |
+| mem_info | 是 | 尚無可獨立辨識的輸出 |
+| sgpu_pm_monitor | 是 | 尚無可獨立辨識的輸出 |
+| utilization_source | 否 | 本次清單未見 |
+| available_utilization_sources | 否 | 本次清單未見 |
+
+清單中的 -r--r--r-- root root 等權限字串，只是 Unix mode 的初步線索；必須以每個節點獨立 cat 結果驗證實際存取。目錄列出不等於成功讀取。
+
+### 3.2 可寫節點安全注意
+
+目錄清單亦出現 gpu_min_clock、gpu_max_clock、gpu_governor、gpu_cl_boost_disable 等帶有寫入權限的控制節點。本輪只有列目錄，沒有寫入。後續診斷必須維持唯讀；不得因看到檔案可寫就嘗試修改。任何控制功能都須另行提案、取得使用者同意，並完成原值保存、讀回驗證及安全還原設計。
+
+## 4. SGPU devfreq 探測
+
+adb shell ls -l /sys/class/devfreq/ 的清單可見以下項目：
+
+~~~text
+10e00000.sgpu
+17000010.devfreq_mif
+17000020.devfreq_int
+17000030.devfreq_npu0
+17000040.devfreq_dnc
+17000050.devfreq_aud
+17000060.devfreq_disp
+17000070.devfreq_intcam
+17000080.devfreq_cam
+17000090.devfreq_isp
+170000a0.devfreq_mfc
+170000b0.devfreq_csis
+170000c0.devfreq_icpu
+~~~
+
+判定：devfreq 目錄可列出，且清單包含 SGPU 項目 10e00000.sgpu。目前只確認該項目存在；尚未確認 name、cur_freq、available_frequencies、min_freq、max_freq、governor 是否存在且可讀。
+
+本輪曾使用字面佔位路徑 /sys/class/devfreq/目錄名稱/...，因此得到 No such file or directory。這是因為路徑沒有替換成真實目錄名稱，不能據此判斷 SGPU 節點不存在或權限遭拒。後續應使用實際路徑 /sys/class/devfreq/10e00000.sgpu。
+
+## 5. 本輪結論
+
+### 已確認
+1. Windows ADB 工具可啟動，ADB 1.0.41 / Platform Tools 37.0.1。
+2. USB ADB 裝置狀態為 device。
+3. 手機型號輸出為 SM-A5560。
+4. ADB shell 身分為 UID 2000，不是 Root。
+5. /sys/kernel/gpu/ 目錄可列出，清單包含 GPU 負載、時鐘、頻率表、溫度/模型/記憶體等候選節點。
+6. /sys/class/devfreq/ 目錄可列出，清單包含 10e00000.sgpu。
+
+### 尚未確認
+1. Android release、API level、One UI、Build fingerprint、security patch、kernel release。
+2. SELinux 模式。
+3. 各 GPU sysfs 節點實際內容與讀取權限。
+4. SGPU devfreq 的 cur_freq 等檔案是否存在且可讀。
+5. gpu_busy 的資料語義（即時百分比、累積計數器或其他格式）。
+6. gpu_clock 是否為當次即時頻率，或可能回傳 last-known/cache 值。
+7. GPU 溫度來源與單位。
+8. Shizuku 是否能取得額外且實際可用的讀取能力。
+
+## 6. 下一輪唯讀診斷命令
+
+請在 Windows CMD 逐行執行，避免多個命令輸出混在一起。
+
+### 6.1 系統與 SELinux
+~~~bat
+adb shell getprop ro.product.device
+adb shell getprop ro.board.platform
+adb shell getprop ro.hardware
+adb shell getprop ro.build.version.release
+adb shell getprop ro.build.version.sdk
+adb shell getprop ro.build.display.id
+adb shell getprop ro.build.fingerprint
+adb shell uname -a
+adb shell getenforce
+~~~
+
+### 6.2 GPU 節點內容
+~~~bat
+adb shell cat /sys/kernel/gpu/gpu_busy
+adb shell cat /sys/kernel/gpu/gpu_clock
+adb shell cat /sys/kernel/gpu/gpu_freq_table
+adb shell cat /sys/kernel/gpu/gpu_tmu
+adb shell cat /sys/kernel/gpu/gpu_model
+adb shell cat /sys/kernel/gpu/mem_info
+adb shell cat /sys/kernel/gpu/sgpu_pm_monitor
+~~~
+
+### 6.3 SGPU devfreq 內容
+~~~bat
+adb shell ls -l /sys/class/devfreq/10e00000.sgpu
+adb shell cat /sys/class/devfreq/10e00000.sgpu/name
+adb shell cat /sys/class/devfreq/10e00000.sgpu/cur_freq
+adb shell cat /sys/class/devfreq/10e00000.sgpu/available_frequencies
+adb shell cat /sys/class/devfreq/10e00000.sgpu/min_freq
+adb shell cat /sys/class/devfreq/10e00000.sgpu/max_freq
+adb shell cat /sys/class/devfreq/10e00000.sgpu/governor
+~~~
+
+以上均為唯讀命令。不要執行 echo >、setprop、su、頻率寫入或其他系統控制命令。
+
+## 7. 資料判讀規則
+
+| 結果 | 判讀 |
+|---|---|
+| 回傳有效內容 | 該次讀取成功；仍需驗證格式、單位與語義 |
+| Permission denied | 存取被拒；再區分 Unix 權限與 SELinux 等政策限制 |
+| No such file or directory | 精確路徑不存在，或 symlink 目標不可用；先檢查路徑 |
+| Is a directory | 指定路徑是目錄，不是資料檔 |
+| 空白或無輸出 | 資訊不足，需用 ls -l、退出碼及重複讀取確認 |
+| 頻率表有值 | 僅能確認支援頻率候選清單，不代表當前頻率 |
+
+## 8. 對 App 實作的約束
+
+- 以本文件「已確認」欄位建立實機能力證據；「尚未確認」欄位不可標記為支援。
+- GPU 節點出現在目錄清單，不代表 App 已能讀取。
+- gpu_busy 必須先觀察原始格式，再選擇 instant percentage 或 cumulative counter parser。
+- gpu_clock 與 SGPU cur_freq 必須交叉比較，保留讀取時間及來源；不能直接假設兩者都是即時值。
+- gpu_freq_table / available_frequencies 必須與 current frequency 分開。
+- 直接 sysfs 與 Shizuku shell 通道必須共用同一來源語義、解析器及累積計數器 baseline。
+- 權限拒絕、路徑不存在、格式錯誤、暫時不可用及未知/受限必須分開表達。
+- 本輪沒有實際 GPU 數值，不得將任何 GPU 負載、頻率、溫度或 FPS 寫成已實測數據。
+
+## 9. 隱私與紀錄注意事項
+
+- 公開文件不要保存完整 ADB serial、使用者帳號、私人檔案路徑或不必要的裝置識別資訊。
+- 分享診斷報告前，先檢查並遮蔽 serial、Wi-Fi、帳號及其他個資。
+- 本文件已省略完整 ADB serial。
