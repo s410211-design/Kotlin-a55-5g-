@@ -306,7 +306,60 @@ adb shell cat /sys/class/devfreq/10e00000.sgpu/governor
 - 權限拒絕、路徑不存在、格式錯誤、暫時不可用及未知/受限必須分開表達。
 - 本輪沒有實際 GPU 數值，不得將任何 GPU 負載、頻率、溫度或 FPS 寫成已實測數據。
 
-## 9. 隱私與紀錄注意事項
+## 9. 第二輪 60 秒診斷（2026-11-12 18:13）
+
+> 來源：使用者提供的第二輪唯讀 ADB 報告。對話中可見 SAMPLE 1–32；未收到／未核對 SAMPLE 33–60 與取樣後 Thermal Service，因此以下統計只涵蓋可見的 32 筆，不宣稱完整 60 筆測試完成。
+
+### 9.1 系統與硬體補充
+
+| 項目 | 實測內容 |
+|---|---|
+| Android / API | Android 17 / API 37 |
+| Build Display | `CP2A.260605.016.A5560ZHUIEZJ1` |
+| SoC property | `s5e8845` |
+| GPU | Samsung Xclipse 530 |
+| CPU online | `0-7` |
+| CPUFreq policy | `policy0`、`policy4` 目錄存在，ADB Shell 可讀取 `scaling_cur_freq` |
+
+### 9.2 GPU 取樣（僅可見 32 筆）
+
+| 項目 | 可見樣本結果 | 判讀 |
+|---|---:|---|
+| `gpu_busy` | 最低 11、最高 73、平均 49.125 | 單一數值在樣本間變動，格式符合 0–100 候選百分比；零售核心語義／來源仍待確認 |
+| `gpu_clock` | 32 筆均為 450000 | 原始數值；單位與即時性未確認 |
+| devfreq `cur_freq` | 多數 450000；SAMPLE 27 為 544000 | 與 `gpu_clock` 不一致，暫不可選定為權威即時頻率 |
+| `gpu_tmu` | 約 48–55 | 只記錄原始值，單位及感測器對應未確認 |
+
+GPU devfreq 靜態讀取回報 `min_freq=450000`、`max_freq=450000`，但取樣中的 `cur_freq` 曾回報 544000。三者與 `gpu_clock` 的一致性尚未解決。支援頻率表是獨立資訊，不得替代目前頻率。現階段 App 只能並列呈現各節點原始值及其來源，不可硬標成 MHz，也不可推斷已鎖定 450 MHz。
+
+### 9.3 CPUFreq 取樣
+
+可見樣本中：
+- `policy0/scaling_cur_freq`：864000–2050000。
+- `policy4/scaling_cur_freq`：1920000–2750000。
+
+Linux CPUFreq 文件定義 `scaling_cur_freq` 單位為 kHz；其多數情況反映 scaling driver 最近要求的 P-state，未必等於硬體當下實際頻率。因此 App 顯示時應標示「核心回報頻率」，不可宣稱是精確硬體時鐘。參考：[Linux CPUFreq documentation](https://www.kernel.org/doc/html/latest/admin-guide/pm/cpufreq.html)。
+
+### 9.4 Thermal Service
+
+取樣前 Thermal Service 回報：
+- Thermal Status：`1`（Android 定義為 LIGHT）。
+- AP：44.9°C。
+- PA：42.1°C。
+- BAT：32.4°C。
+- SKIN：40.7°C。
+- USB：32.8°C。
+
+這些是 `dumpsys thermalservice` 的感測器資料；GPU_TMU 不可直接等同 GPU 晶片攝氏溫度。Android 公開 `PowerManager` API 可提供整機 thermal status 與 thermal headroom 估計，但不是 AP/GPU/BAT/PA/SKIN 的逐感測器攝氏讀值。App 目前只能透過公開 API 顯示狀態及 headroom；逐感測器資料仍需後續核准並整合受控的 shell/Shizuku 讀取通道。參考：[Android PowerManager API](https://developer.android.com/reference/android/os/PowerManager)。
+
+### 9.5 取樣與權限限制
+
+- 報告中取樣時間間隔約 1–2 秒，並非精確每秒一次；每筆包含多次 ADB 呼叫。
+- policy0/policy4 的 ADB Shell 讀取成功，不等於 App 自身 UID 一定能讀取；App 端直接 sysfs 存取仍待實機安裝驗證。
+- 本次對話只收到前 32 筆樣本，後 28 筆及取樣後溫度摘要尚未核對。
+- 目前沒有可用證據證明遊戲 FPS 已成功取得。
+
+## 10. 隱私與紀錄注意事項
 
 - 公開文件不要保存完整 ADB serial、使用者帳號、私人檔案路徑或不必要的裝置識別資訊。
 - 分享診斷報告前，先檢查並遮蔽 serial、Wi-Fi、帳號及其他個資。
