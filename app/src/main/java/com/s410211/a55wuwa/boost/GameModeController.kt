@@ -65,21 +65,40 @@ class GameModeController(context: Context, private val gateway: ShizukuGateway) 
         val downscale = gateway.setGameModeDownscale(
             packageName, targetMode, scale, SystemClock.elapsedRealtime()
         )
-        if (downscale !is Reading.Value || downscale.value.trim() != scale) {
+        if (downscale !is Reading.Value) {
             val afterFailure = readConfig(packageName)
             if (afterFailure == originalConfig) clearJournal()
             return@exclusive GameModeOutcome.Rejected(
-                "GPU 渲染降採樣未通過讀回驗證：" + readingReason(downscale)
+                "GPU 渲染降採樣指令失敗：" + readingReason(downscale)
             )
         }
 
-        val appliedConfig = readConfig(packageName)
-            ?: return@exclusive GameModeOutcome.Rejected("渲染比例已送出，但讀取設定失敗；保留還原記錄")
-        if (!hasDownscale(appliedConfig, scale)) {
-            return@exclusive GameModeOutcome.Rejected("渲染比例讀回不符；保留還原記錄")
+        val appliedConfig = downscale.value.trim()
+        if (appliedConfig.isBlank()) {
+            return@exclusive GameModeOutcome.Rejected(
+                "GameManager 沒有回傳介入設定快照；保留還原記錄"
+            )
         }
+        // Save exact read-back before validating interpretation. This preserves
+        // a safe rollback path even if a vendor formats the output unexpectedly.
         if (!preferences.edit().putString(KEY_APPLIED_CONFIG, appliedConfig).commit()) {
-            return@exclusive GameModeOutcome.Rejected("渲染比例已套用，但無法保存驗證記錄；請勿關閉服務")
+            return@exclusive GameModeOutcome.Rejected(
+                "渲染設定已送出，但無法保存讀回快照；保留還原記錄"
+            )
+        }
+        if (!hasDownscale(appliedConfig, scale)) {
+            return@exclusive GameModeOutcome.Rejected(
+                "GameManager 讀回設定未包含目標比例 $scale；保留還原記錄"
+            )
+        }
+        val verifiedConfig = readConfig(packageName)
+            ?: return@exclusive GameModeOutcome.Rejected(
+                "渲染比例已讀回，但第二次讀取失敗；保留還原記錄"
+            )
+        if (verifiedConfig != appliedConfig) {
+            return@exclusive GameModeOutcome.Rejected(
+                "GameManager 設定在驗證期間發生變化；不覆寫外部變更"
+            )
         }
 
         if (before.first != targetMode) {
