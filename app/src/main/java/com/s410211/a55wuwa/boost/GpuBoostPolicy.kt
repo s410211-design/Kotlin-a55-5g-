@@ -48,7 +48,7 @@ object GpuBoostPolicy {
         if (validOpps.isEmpty()) {
             return GpuBoostPlanResult.Rejected("目前 GPU 上限內沒有有效 OPP")
         }
-        val requestedFloor = snapshot.currentMaxRaw * requestedPercent / 100L
+        val requestedFloor = percentageFloor(snapshot.currentMaxRaw, requestedPercent)
         val target = validOpps.firstOrNull { it >= requestedFloor } ?: validOpps.last()
         if (target <= snapshot.currentMinRaw) {
             return GpuBoostPlanResult.NoChange(snapshot.currentMinRaw)
@@ -57,4 +57,8 @@ object GpuBoostPolicy {
             GpuBoostPlan(snapshot.currentMinRaw, target, snapshot.currentMaxRaw)
         )
     }
+
+    /** Avoid Long overflow when handling untrusted sysfs frequency values. */
+    private fun percentageFloor(value: Long, percent: Int): Long =
+        (value / 100L) * percent + ((value % 100L) * percent) / 100L
 }
