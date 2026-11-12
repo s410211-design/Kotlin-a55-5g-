@@ -636,7 +636,7 @@ class PerformanceSessionService : Service() {
     }
 
     private fun gameModeOutcomeText(outcome: GameModeOutcome): String = when (outcome) {
-        is GameModeOutcome.Applied -> "已切換 Performance，GPU Backbuffer 渲染比例 ${outcome.downscalePercent}%（原始模式：${outcome.originalMode}），系統讀回確認"
+        is GameModeOutcome.Applied -> "已切換 GameManager ${outcome.targetMode}，GPU Backbuffer 渲染比例 ${outcome.downscalePercent}%（原始模式：${outcome.originalMode}），設定讀回確認；需重啟鳴潮"
         is GameModeOutcome.Restored -> if (outcome.externalChange) "偵測到外部模式變更，未覆寫" else "目前已是／已切回 ${outcome.originalMode}"
         is GameModeOutcome.Rejected -> "未套用：${outcome.reason}"
         GameModeOutcome.NoChange -> "已經是 Performance，無需變更"
