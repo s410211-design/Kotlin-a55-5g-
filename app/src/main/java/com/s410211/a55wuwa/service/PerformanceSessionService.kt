@@ -445,7 +445,8 @@ class PerformanceSessionService : Service() {
         if (fpsCaptureRequested || fpsCaptureActive || fpsStopRequested) {
             val stopResult = gateway.stopSurfaceFlingerTimeStats(SystemClock.elapsedRealtime())
             if (stopResult !is Reading.Value) {
-                setFpsStatus("無法確認 timestats 已停用：" + readingReason(stopResult))
+                val reason = stopResult?.let(::readingReason) ?: "Shizuku UserService 未連線"
+                setFpsStatus("無法確認 timestats 已停用：" + reason)
                 return@synchronized false
             }
         }
