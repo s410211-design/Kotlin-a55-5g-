@@ -63,6 +63,7 @@ class PerformanceSessionService : Service() {
     @Volatile private var lastFpsSampleAt: Long? = null
     private val thermalRestoreQueued = AtomicBoolean(false)
     private val cpuLoadTracker = CpuLoadTracker()
+    private val fpsLock = Any()
     private var hudView: TextView? = null
     private var windowManager: WindowManager? = null
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -337,84 +338,88 @@ class PerformanceSessionService : Service() {
     }
 
     private fun startFpsCapture() {
-        if (fpsCaptureActive) return
-        val prefs = getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE)
-        val packageName = prefs.getString("game_package", null)
-        if (packageName.isNullOrBlank()) {
-            setFpsStatus("尚未選取鳴潮套件；請先透過啟動器按鈕啟動遊戲")
-            return
+        synchronized(fpsLock) {
+            if (fpsCaptureActive) return
+            val prefs = getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE)
+            val packageName = prefs.getString("game_package", null)
+            if (packageName.isNullOrBlank()) {
+                setFpsStatus("尚未選取鳴潮套件；請先透過啟動器按鈕啟動遊戲")
+                return
+            }
+            val result = gateway.startSurfaceFlingerTimeStats(
+                packageName,
+                SystemClock.elapsedRealtime()
+            )
+            if (result !is Reading.Value) {
+                setFpsStatus("FPS 啟動失敗：" + readingReason(result))
+                return
+            }
+            fpsCaptureActive = true
+            fpsCaptureRequested = true
+            fpsStopRequested = false
+            lastFpsTotalFrames = null
+            lastFpsSampleAt = null
+            setFpsStatus("已開始擷取 SurfaceFlinger 遊戲 layer：$packageName")
+            fpsTask?.cancel(true)
+            fpsTask = fpsScheduler.scheduleWithFixedDelay(
+                { runCatching { sampleGameFps(packageName) } },
+                0L,
+                FPS_SAMPLE_INTERVAL_MS,
+                TimeUnit.MILLISECONDS
+            )
         }
-        val result = gateway.startSurfaceFlingerTimeStats(
-            packageName,
-            SystemClock.elapsedRealtime()
-        )
-        if (result !is Reading.Value) {
-            setFpsStatus("FPS 啟動失敗：" + readingReason(result))
-            return
-        }
-        fpsCaptureActive = true
-        fpsCaptureRequested = true
-        fpsStopRequested = false
-        lastFpsTotalFrames = null
-        lastFpsSampleAt = null
-        setFpsStatus("已開始擷取 SurfaceFlinger 遊戲 layer：$packageName")
-        fpsTask?.cancel(true)
-        fpsTask = fpsScheduler.scheduleWithFixedDelay(
-            { runCatching { sampleGameFps(packageName) } },
-            0L,
-            FPS_SAMPLE_INTERVAL_MS,
-            TimeUnit.MILLISECONDS
-        )
     }
 
     private fun sampleGameFps(packageName: String) {
-        if (!fpsCaptureActive) return
-        val at = SystemClock.elapsedRealtime()
-        val raw = gateway.dumpSurfaceFlingerTimeStats(packageName, at)
-        if (raw !is Reading.Value) {
-            setFpsStatus("FPS 暫時不可用：" + readingReason(raw))
-            return
-        }
-        when (val parsed = SurfaceFlingerTimeStatsParser.parse(raw.value, packageName, at)) {
-            is Reading.Value -> {
-                val current = parsed.value
-                val previousFrames = lastFpsTotalFrames
-                val previousAt = lastFpsSampleAt
-                val windowFps = if (
-                    previousFrames != null && previousAt != null &&
-                    current.totalFrames >= previousFrames && at > previousAt &&
-                    current.totalFrames > previousFrames
-                ) {
-                    (current.totalFrames - previousFrames) * 1_000.0 / (at - previousAt)
-                } else null
-
-                lastFpsTotalFrames = current.totalFrames
-                lastFpsSampleAt = at
-                val prefs = getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE)
-                prefs.edit()
-                    .putString("fps_status", if (windowFps == null) "等待下一個有效影格區間" else "有效")
-                    .putFloat("fps_cumulative", current.cumulativeAverageFps.toFloat())
-                    .putString("fps_window", windowFps?.toString())
-                    .putLong("fps_total_frames", current.totalFrames)
-                    .putString("fps_layer", current.layerName.take(240))
-                    .putLong("fps_sampled_at", at)
-                    .apply()
-                updateHud()
+        synchronized(fpsLock) {
+            if (!fpsCaptureActive) return
+            val at = SystemClock.elapsedRealtime()
+            val raw = gateway.dumpSurfaceFlingerTimeStats(packageName, at)
+            if (raw !is Reading.Value) {
+                setFpsStatus("FPS 暫時不可用：" + readingReason(raw))
+                return
             }
-            else -> setFpsStatus("FPS layer 尚未有效：" + readingReason(parsed))
+            when (val parsed = SurfaceFlingerTimeStatsParser.parse(raw.value, packageName, at)) {
+                is Reading.Value -> {
+                    val current = parsed.value
+                    val previousFrames = lastFpsTotalFrames
+                    val previousAt = lastFpsSampleAt
+                    val windowFps = if (
+                        previousFrames != null && previousAt != null &&
+                        current.totalFrames >= previousFrames && at > previousAt &&
+                        current.totalFrames > previousFrames
+                    ) {
+                        (current.totalFrames - previousFrames) * 1_000.0 / (at - previousAt)
+                    } else null
+
+                    lastFpsTotalFrames = current.totalFrames
+                    lastFpsSampleAt = at
+                    val prefs = getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE)
+                    prefs.edit()
+                        .putString("fps_status", if (windowFps == null) "等待下一個有效影格區間" else "有效")
+                        .putFloat("fps_cumulative", current.cumulativeAverageFps.toFloat())
+                        .putString("fps_window", windowFps?.toString())
+                        .putLong("fps_total_frames", current.totalFrames)
+                        .putString("fps_layer", current.layerName.take(240))
+                        .putLong("fps_sampled_at", at)
+                        .apply()
+                    updateHud()
+                }
+                else -> setFpsStatus("FPS layer 尚未有效：" + readingReason(parsed))
+            }
         }
     }
 
-    private fun stopFpsCapture(): Boolean {
+    private fun stopFpsCapture(): Boolean = synchronized(fpsLock) {
+        fpsTask?.cancel(true)
+        fpsTask = null
         if (fpsCaptureRequested || fpsCaptureActive || fpsStopRequested) {
             val stopResult = gateway.stopSurfaceFlingerTimeStats(SystemClock.elapsedRealtime())
             if (stopResult !is Reading.Value) {
                 setFpsStatus("無法確認 timestats 已停用：" + readingReason(stopResult))
-                return false
+                return@synchronized false
             }
         }
-        fpsTask?.cancel(true)
-        fpsTask = null
         fpsCaptureActive = false
         fpsCaptureRequested = false
         fpsStopRequested = false
@@ -427,7 +432,7 @@ class PerformanceSessionService : Service() {
             .putString("fps_status", "FPS 擷取已停止")
             .remove("fps_window")
             .apply()
-        return true
+        true
     }
 
     private fun setFpsStatus(status: String) {
