@@ -37,11 +37,15 @@ import com.s410211.a55wuwa.telemetry.ThermalStatusReader
 import com.s410211.a55wuwa.telemetry.ThermalStatusSnapshot
 import com.s410211.a55wuwa.telemetry.Reading
 import com.s410211.a55wuwa.telemetry.DeviceHealthReader
+import com.s410211.a55wuwa.telemetry.CpuLoadTracker
+import com.s410211.a55wuwa.telemetry.CpuStatParser
 import java.util.Locale
+import java.io.File
 import java.util.concurrent.Executors
 
 class MainActivity : Activity() {
     private val ioExecutor = Executors.newSingleThreadExecutor()
+    private val cpuLoadTracker = CpuLoadTracker()
     private val sessionHandler = Handler(Looper.getMainLooper())
     private var servicePollMisses = 0
     private val shizukuGateway by lazy {
@@ -755,14 +759,40 @@ class MainActivity : Activity() {
         }
         cpuSampler.start { batch: CpuSampleBatch ->
             val thermalReading = ThermalStatusReader.read(applicationContext, batch.sampledAtMillis)
+            val cpuLoadReading = readCpuLoad(batch.sampledAtMillis)
             runOnUiThread {
                 if (!activityVisible || isFinishing || isDestroyed) return@runOnUiThread
                 latestCpuResults = batch.readings
                 latestThermalReading = thermalReading
-                cpuValueText?.text = formatCpuReadings(batch.readings)
+                cpuValueText?.text = formatCpuReadings(batch.readings) + "\n" + formatCpuLoad(cpuLoadReading)
                 thermalValueText?.text = formatThermalReading(thermalReading)
             }
         }
+    }
+
+    private fun readCpuLoad(sampledAtMillis: Long): Reading<Double> {
+        val raw = try {
+            File("/proc/stat").readText()
+        } catch (error: SecurityException) {
+            return Reading.PermissionDenied("/proc/stat", sampledAtMillis, "App UID 無權讀取 proc stat")
+        } catch (error: Exception) {
+            return Reading.TemporarilyUnavailable("/proc/stat", sampledAtMillis, error.javaClass.simpleName)
+        }
+        return when (val parsed = CpuStatParser.parse(raw, sampledAtMillis)) {
+            is Reading.Value -> cpuLoadTracker.update(parsed.value, sampledAtMillis)
+            else -> parsed
+        }
+    }
+
+    private fun formatCpuLoad(reading: Reading<Double>): String = when (reading) {
+        is Reading.Value -> String.format(Locale.US, "CPU 使用率：%.1f%%", reading.value)
+        is Reading.AwaitingSample -> "CPU 使用率：等待第二筆樣本"
+        is Reading.PermissionDenied -> "CPU 使用率：權限不足"
+        is Reading.Unsupported -> "CPU 使用率：不支援"
+        is Reading.NotFound -> "CPU 使用率：來源不存在"
+        is Reading.InvalidData -> "CPU 使用率：資料無效"
+        is Reading.TemporarilyUnavailable -> "CPU 使用率：暫時不可用"
+        is Reading.Error -> "CPU 使用率：讀取錯誤"
     }
 
     private fun stopLocalSamplers() {
@@ -798,8 +828,12 @@ class MainActivity : Activity() {
                         ?: return "—"
                     return String.format(Locale.US, "%.1f MHz", khz / 1_000.0)
                 }
+                val cpuLoad = prefs.getFloat("cpu_load_percent", -1f)
+                val cpuLoadText = if (cpuLoad >= 0f) {
+                    String.format(Locale.US, "CPU 使用率：%.1f%%", cpuLoad)
+                } else "CPU 使用率：未取得"
                 cpuValueText?.text =
-                    "policy0 核心回報：${cpuText(0)}\npolicy4 核心回報：${cpuText(1)}"
+                    "policy0 核心回報：${cpuText(0)}\npolicy4 核心回報：${cpuText(1)}\n$cpuLoadText"
                 val thermalStatus = prefs.getInt("thermal_status", -1)
                 thermalValueText?.text =
                     "整機 Thermal 狀態：${ThermalStatusReader.statusLabel(thermalStatus)}"
@@ -839,6 +873,7 @@ class MainActivity : Activity() {
         activityVisible = false
         sessionHandler.removeCallbacks(sessionSnapshotPoll)
         stopLocalSamplers()
+        cpuLoadTracker.reset()
         super.onStop()
     }
 
