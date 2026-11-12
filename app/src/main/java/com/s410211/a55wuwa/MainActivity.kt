@@ -352,6 +352,7 @@ class MainActivity : Activity() {
                 pendingRecoveryRequested = false
                 shizukuValueText?.text =
                     "通知權限未授予；為避免背景服務狀態不透明，尚未啟動監控／Boost 服務。"
+                startLocalSamplers()
             }
         }
     }
