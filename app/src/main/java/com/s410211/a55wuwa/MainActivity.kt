@@ -164,9 +164,7 @@ class MainActivity : Activity() {
         boostButton = Button(this).apply {
             text = "啟動 CPU＋GPU Boost（目標80%，中度熱降至70%）"
             isAllCaps = false
-            setOnClickListener {
-                requestSessionAction(PerformanceSessionService.ACTION_BOOST)
-            }
+            setOnClickListener { requestBoost(80) }
         }
         boost70Button = Button(this).apply {
             text = "Boost 70%（保守）"
