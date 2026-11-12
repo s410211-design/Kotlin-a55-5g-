@@ -323,6 +323,61 @@ class ShizukuGateway(
         }
     }
 
+    fun startSurfaceFlingerTimeStats(
+        packageName: String,
+        sampledAtMillis: Long
+    ): Reading<String>? = invokeTimestats(sampledAtMillis) {
+        it.startSurfaceFlingerTimeStats(packageName)
+    }
+
+    fun dumpSurfaceFlingerTimeStats(
+        packageName: String,
+        sampledAtMillis: Long
+    ): Reading<String>? = invokeTimestats(sampledAtMillis) {
+        it.dumpSurfaceFlingerTimeStats(packageName)
+    }
+
+    fun stopSurfaceFlingerTimeStats(sampledAtMillis: Long): Reading<String>? =
+        invokeTimestats(sampledAtMillis) { it.stopSurfaceFlingerTimeStats() }
+
+    private fun invokeTimestats(
+        sampledAtMillis: Long,
+        call: (IA55ShizukuService) -> Array<String>
+    ): Reading<String>? {
+        val source = "SurfaceFlinger --timestats"
+        val service = remote ?: return Reading.TemporarilyUnavailable(
+            source, sampledAtMillis, "Shizuku UserService 尚未連線"
+        )
+        if (!service.asBinder().pingBinder()) {
+            return Reading.TemporarilyUnavailable(
+                source, sampledAtMillis, "Shizuku UserService Binder 已失效"
+            )
+        }
+        return try {
+            val response = call(service)
+            val status = response.getOrNull(0).orEmpty()
+            val raw = response.getOrNull(1).orEmpty()
+            val detail = response.getOrNull(2).orEmpty().take(256)
+            when (status) {
+                "OK" -> Reading.Value(raw, source, "raw", sampledAtMillis)
+                "PERMISSION_DENIED" -> Reading.PermissionDenied(source, sampledAtMillis, detail)
+                "TEMPORARY" -> Reading.TemporarilyUnavailable(source, sampledAtMillis, detail)
+                "INVALID_DATA", "OUTPUT_TOO_LARGE" ->
+                    Reading.InvalidData(source, sampledAtMillis, detail)
+                "UNSUPPORTED" -> Reading.Unsupported(source, sampledAtMillis, detail)
+                else -> Reading.Error(source, sampledAtMillis, detail.ifBlank { "timestats command failed: $status" })
+            }
+        } catch (error: RemoteException) {
+            Reading.TemporarilyUnavailable(
+                source, sampledAtMillis, "Shizuku IPC 中斷：" + error.javaClass.simpleName
+            )
+        } catch (error: RuntimeException) {
+            Reading.Error(
+                source, sampledAtMillis, "timestats 呼叫失敗：" + error.javaClass.simpleName
+            )
+        }
+    }
+
     private fun handleBinderReceived() {
         if (closed) return
         if (Shizuku.isPreV11()) {
