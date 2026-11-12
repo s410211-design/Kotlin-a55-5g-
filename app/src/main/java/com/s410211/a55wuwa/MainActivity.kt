@@ -76,6 +76,7 @@ class MainActivity : Activity() {
     private var shizukuValueText: TextView? = null
     private var sessionStatusValueText: TextView? = null
     private var fpsValueText: TextView? = null
+    private var healthValueText: TextView? = null
     private lateinit var page: LinearLayout
     private lateinit var refreshButton: Button
     private lateinit var shizukuButton: Button
@@ -485,7 +486,7 @@ class MainActivity : Activity() {
             appendLine("網路：${health.networkTransport ?: "未連線／未知"}")
             append("網際網路驗證：${when (health.networkValidated) { true -> "已驗證"; false -> "未驗證"; null -> "未知" }}")
         }
-        page.addView(card("電池與網路", healthText))
+        page.addView(card("電池與網路", healthText) { healthValueText = it })
 
         page.addView(card(
             "目標實機設定",
@@ -842,6 +843,28 @@ class MainActivity : Activity() {
                 val thermalStatus = prefs.getInt("thermal_status", -1)
                 thermalValueText?.text =
                     "整機 Thermal 狀態：${ThermalStatusReader.statusLabel(thermalStatus)}"
+                val batteryLevel = prefs.getInt("battery_level", -1)
+                val batteryTemp = prefs.getFloat("battery_temp_c", -1f)
+                val batteryVoltage = prefs.getInt("battery_voltage_mv", -1)
+                val charging = when (prefs.getInt("battery_charging", -1)) {
+                    1 -> "充電中"
+                    0 -> "未充電"
+                    else -> "未知"
+                }
+                val network = prefs.getString("network_transport", "未連線／未知") ?: "未連線／未知"
+                val networkValidated = when (prefs.getInt("network_validated", -1)) {
+                    1 -> "已驗證"
+                    0 -> "未驗證"
+                    else -> "未知"
+                }
+                healthValueText?.text = buildString {
+                    appendLine("電池電量：${if (batteryLevel >= 0) "$batteryLevel%" else "無法取得"}")
+                    appendLine("電池溫度：${if (batteryTemp > 0f) String.format(Locale.US, "%.1f°C", batteryTemp) else "無法取得"}")
+                    appendLine("電池電壓：${if (batteryVoltage > 0) "$batteryVoltage mV" else "無法取得"}")
+                    appendLine("充電狀態：$charging")
+                    appendLine("網路：$network")
+                    append("網際網路驗證：$networkValidated")
+                }
                 val fpsWindow = prefs.getString("fps_window", null)?.toDoubleOrNull()
                 val fpsAverage = prefs.getFloat("fps_cumulative", -1f)
                 fpsValueText?.text = buildString {
