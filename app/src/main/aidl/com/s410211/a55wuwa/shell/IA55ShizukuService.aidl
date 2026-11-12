@@ -13,4 +13,9 @@ interface IA55ShizukuService {
 
     // Writes only explicitly allowlisted, policy-validated controls.
     String[] writeNode(int nodeId, String value) = 4;
+
+    // Fixed SurfaceFlinger timestats commands; packageName is validated, never shell-interpolated.
+    String[] startSurfaceFlingerTimeStats(String packageName) = 5;
+    String[] dumpSurfaceFlingerTimeStats(String packageName) = 6;
+    String[] stopSurfaceFlingerTimeStats() = 7;
 }
