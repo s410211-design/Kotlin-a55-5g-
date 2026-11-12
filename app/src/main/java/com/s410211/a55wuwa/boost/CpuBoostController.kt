@@ -8,7 +8,7 @@ import com.s410211.a55wuwa.telemetry.Reading
 import java.util.concurrent.atomic.AtomicBoolean
 
 sealed interface CpuBoostOutcome {
-    data class Applied(val plans: List<CpuBoostPlan>) : CpuBoostOutcome
+    data class Applied(val plans: List<CpuBoostPlan>, val effectivePercent: Int) : CpuBoostOutcome
     data class Restored(val restoredPolicies: Int, val externalChanges: List<String>) : CpuBoostOutcome
     data class Rejected(val reason: String) : CpuBoostOutcome
     data object NoChange : CpuBoostOutcome
@@ -43,11 +43,10 @@ class CpuBoostController(
         val powerManager = appContext.getSystemService(Context.POWER_SERVICE) as? PowerManager
             ?: return@withExclusiveOperation CpuBoostOutcome.Rejected("無法取得 Android PowerManager")
         val thermalStatus = powerManager.currentThermalStatus
-        if (!CpuBoostPolicy.thermalAllowsBoost(thermalStatus)) {
-            return@withExclusiveOperation CpuBoostOutcome.Rejected(
-                "目前熱狀態為 ${thermalStatusLabel(thermalStatus)}；為避免持續升溫，拒絕啟動 Boost"
+        val effectivePercent = CpuBoostPolicy.effectivePercent(percent, thermalStatus)
+            ?: return@withExclusiveOperation CpuBoostOutcome.Rejected(
+                "目前熱狀態為 ${thermalStatusLabel(thermalStatus)} 或 Boost 百分比無效；拒絕啟動"
             )
-        }
 
         val plans = mutableListOf<CpuBoostPlan>()
         for (policy in POLICIES) {
@@ -56,7 +55,7 @@ class CpuBoostController(
             } catch (error: BoostFailure) {
                 return@withExclusiveOperation CpuBoostOutcome.Rejected(error.message ?: "CPU policy 讀取失敗")
             }
-            when (val result = CpuBoostPolicy.planAtPercent(snapshot, percent)) {
+            when (val result = CpuBoostPolicy.planAtPercent(snapshot, effectivePercent)) {
                 is CpuBoostPlanResult.Ready -> plans += result.plan
                 is CpuBoostPlanResult.NoChange -> Unit
                 is CpuBoostPlanResult.Rejected ->
@@ -86,7 +85,7 @@ class CpuBoostController(
             applied += plan
         }
 
-        CpuBoostOutcome.Applied(plans)
+        CpuBoostOutcome.Applied(plans, effectivePercent)
     }
 
     fun restore(): CpuBoostOutcome = withExclusiveOperation {
@@ -224,7 +223,7 @@ class CpuBoostController(
             val id = preferences.getString("policy_$index", null) ?: return null
             val original = preferences.getLong("original_$index", 0L)
             val target = preferences.getLong("target_$index", 0L)
-            val config = POLICIES.firstOrNull { it.id == id } ?: return null
+            POLICIES.firstOrNull { it.id == id } ?: return null
             if (original <= 0L || target <= original) return null
             result += CpuBoostPlan(id, original, target, maxLimitKHz = 0L)
         }
@@ -235,10 +234,9 @@ class CpuBoostController(
         preferences.edit().clear().commit()
     }
 
-    private inline fun <T> withExclusiveOperation(block: () -> T): T {
+    private fun withExclusiveOperation(block: () -> CpuBoostOutcome): CpuBoostOutcome {
         if (!operationLock.compareAndSet(false, true)) {
-            @Suppress("UNCHECKED_CAST")
-            return CpuBoostOutcome.Rejected("另一個 Boost／還原操作正在執行") as T
+            return CpuBoostOutcome.Rejected("另一個 Boost／還原操作正在執行")
         }
         return try {
             block()
