@@ -547,11 +547,12 @@ class MainActivity : Activity() {
             MODE_PRIVATE
         )
         val fpsWindow = fpsPreferences.getString("fps_window", null)?.toDoubleOrNull()
+        val fpsDurationSeconds = fpsPreferences.getLong("fps_window_duration_ms", 0L) / 1_000.0
         val fpsCumulative = fpsPreferences.getFloat("fps_cumulative", -1f)
         val fpsText = buildString {
             appendLine("狀態：${fpsPreferences.getString("fps_status", "尚未啟動") ?: "尚未啟動"}")
             if (fpsWindow != null && fpsWindow.isFinite() && fpsWindow > 0.0) {
-                appendLine("最近約 5 秒：${String.format(Locale.US, "%.1f", fpsWindow)} FPS")
+                appendLine("最近 ${String.format(Locale.US, "%.1f", fpsDurationSeconds)} 秒：${String.format(Locale.US, "%.1f", fpsWindow)} FPS")
             }
             if (fpsCumulative > 0f) {
                 appendLine("擷取期間平均：${String.format(Locale.US, "%.1f", fpsCumulative)} FPS")
@@ -893,11 +894,12 @@ class MainActivity : Activity() {
                     append("網際網路驗證：$networkValidated")
                 }
                 val fpsWindow = prefs.getString("fps_window", null)?.toDoubleOrNull()
+                val fpsDurationSeconds = prefs.getLong("fps_window_duration_ms", 0L) / 1_000.0
                 val fpsAverage = prefs.getFloat("fps_cumulative", -1f)
                 fpsValueText?.text = buildString {
                     appendLine("狀態：${prefs.getString("fps_status", "尚未啟動") ?: "尚未啟動"}")
                     if (fpsWindow != null && fpsWindow.isFinite() && fpsWindow > 0.0) {
-                        appendLine("最近約 5 秒：${String.format(Locale.US, "%.1f", fpsWindow)} FPS")
+                        appendLine("最近 ${String.format(Locale.US, "%.1f", fpsDurationSeconds)} 秒：${String.format(Locale.US, "%.1f", fpsWindow)} FPS")
                     }
                     if (fpsAverage > 0f) {
                         appendLine("擷取期間平均：${String.format(Locale.US, "%.1f", fpsAverage)} FPS")
