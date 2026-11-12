@@ -15,9 +15,10 @@ sealed interface GpuBoostOutcome {
 }
 
 /**
- * GPU boost is attempted only under an actual Shizuku Root UID 0 backend.
- * The SM-A5560 inventory shows gpu_min_clock owned by system:system, so
- * Shell UID 2000 is known not to have DAC write access.
+ * Attempt the allowlisted GPU minimum-floor write using the actual Shizuku
+ * identity. Do not infer write access from UID: the kernel's DAC and SELinux
+ * checks are authoritative. A denied open/write is reported as a real
+ * permission failure; no fallback or privilege escalation is attempted.
  */
 class GpuBoostController(
     context: Context,
@@ -40,11 +41,8 @@ class GpuBoostController(
         if (identity.uid == null) {
             return@exclusive GpuBoostOutcome.Rejected("尚未確認 Shizuku 遠端 UID，請稍後重試 GPU Boost")
         }
-        if (identity.uid != 0) {
-            return@exclusive GpuBoostOutcome.Rejected(
-                "GPU 控制節點為 system:system；目前是 UID ${identity.uid}，不是 Root UID 0，拒絕寫入"
-            )
-        }
+        // UID 2000 is not assumed to be privileged or unprivileged for every
+        // sysfs node. Let the exact O_WRONLY operation report DAC/SELinux denial.
 
         val powerManager = appContext.getSystemService(Context.POWER_SERVICE) as? PowerManager
             ?: return@exclusive GpuBoostOutcome.Rejected("無法取得 Android Thermal 狀態")
