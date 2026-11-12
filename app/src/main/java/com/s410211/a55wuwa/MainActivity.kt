@@ -162,17 +162,17 @@ class MainActivity : Activity() {
             setOnClickListener { requestSessionAction(PerformanceSessionService.ACTION_START) }
         }
         boostButton = Button(this).apply {
-            text = "啟動 CPU＋GPU 效能加速（目標 80%；中度熱狀態自動降至 70%）"
+            text = "鳴潮效能模式（GameManager Performance + CPU 輔助 80%）"
             isAllCaps = false
             setOnClickListener { requestBoost(80) }
         }
         boost70Button = Button(this).apply {
-            text = "效能加速 70%（保守）"
+            text = "效能模式 + CPU 輔助 70%（保守）"
             isAllCaps = false
             setOnClickListener { requestBoost(70) }
         }
         boost90Button = Button(this).apply {
-            text = "效能加速 90%（高效能／高耗電）"
+            text = "效能模式 + CPU 輔助 90%（高耗電）"
             isAllCaps = false
             setOnClickListener { requestBoost(90) }
         }
@@ -286,7 +286,7 @@ class MainActivity : Activity() {
         page.addView(card("效能加速狀態（CPU／GPU）", status) { sessionStatusValueText = it })
         page.addView(card(
             "Boost 安全限制",
-            "只調整 CPU／GPU 最低頻率，不提高原廠最高頻率、不修改電壓、不關閉溫度保護。GPU 節點需要真正的 Root（系統管理員）權限，而且仍須通過 SELinux 安全檢查；一般 Shizuku Shell 權限無法寫入 GPU。"
+            "主要加速方式：透過 Shizuku 呼叫 Android GameManager，先查詢鳴潮是否支援 Performance Mode，再套用並讀回驗證；停止時還原原始模式。CPU 最低頻率調整只是輔助，不會提高最高頻率。GPU 節點在 SM-A5560 上需要 Root 權限，一般 Shizuku Shell 不會假裝成功。所有模式仍受 Samsung Power HAL 與原廠溫控限制。"
         ))
         page.addView(sessionButton, marginParams(top = 8))
         page.addView(boost70Button, marginParams(top = 8))
