@@ -219,7 +219,7 @@ class ShizukuGateway(
      * use the app-UID reader. A remote denial is returned and must not fallback.
      */
     fun readNode(path: String, sampledAtMillis: Long): Reading<String>? {
-        val node = ShizukuNodeCatalog.fromPath(path) ?: return null
+        val node = ShizukuNode.fromPath(path) ?: return null
         val service = remote ?: return null
         if (!service.asBinder().pingBinder()) {
             return Reading.TemporarilyUnavailable(
