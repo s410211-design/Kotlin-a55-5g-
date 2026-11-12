@@ -31,6 +31,22 @@ class SurfaceFlingerTimeStatsParserTest {
     }
 
     @Test
+    fun doesNotMatchPackageNamePrefixes() {
+        val output = """
+            layerName = SurfaceView[com.kurogame.wutheringwaves.global2/MainActivity]@0(BLAST)#7
+            totalFrames = 120
+            averageFPS = 60.0
+        """.trimIndent()
+        assertTrue(
+            SurfaceFlingerTimeStatsParser.parse(
+                output,
+                "com.kurogame.wutheringwaves.global",
+                1L
+            ) is Reading.TemporarilyUnavailable
+        )
+    }
+
+    @Test
     fun refusesOtherPackagesAndInvalidFps() {
         val output = """
             layerName = SurfaceView[com.other.game/MainActivity]@0(BLAST)#7
