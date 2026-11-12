@@ -177,7 +177,7 @@ class PerformanceSessionService : Service() {
                     ?: DEFAULT_PERCENT
                 operations.execute {
                     if (!awaitUserService()) {
-                        sessionText = "Boost 未執行：Shizuku UserService 未連線"
+                        sessionText = "加速未啟動：尚未連接 Shizuku 系統服務"
                     } else {
                         val cpuResult = boostController.apply(percent)
                         val gpuResult = gpuBoostController.apply(percent)
@@ -188,7 +188,7 @@ class PerformanceSessionService : Service() {
             }
             ACTION_RESTORE -> operations.execute {
                 if (!awaitUserService() && hasPendingBoostJournal()) {
-                    sessionText = "還原失敗：Shizuku UserService 未連線，請先重新連線"
+                    sessionText = "還原失敗：Shizuku 系統服務未連線，請先重新連線"
                 } else {
                     sessionText = restoreBothBoostsText()
                 }
@@ -212,7 +212,7 @@ class PerformanceSessionService : Service() {
                 }
                 if (hasPendingBoostJournal()) {
                     if (!awaitUserService()) {
-                        sessionText = "停止暫緩：無法連線 Shizuku，尚有 Boost 還原記錄"
+                        sessionText = "停止服務暫緩：Shizuku 未連線，仍有加速設定需要還原"
                         updateNotification()
                         return@execute
                     }
@@ -340,7 +340,7 @@ class PerformanceSessionService : Service() {
             lastThermalRestoreAttemptStatus = lastThermalStatus
             operations.execute {
                 try {
-                    sessionText = "熱狀態升高，正在安全還原 CPU Boost"
+                    sessionText = "裝置溫度過高，正在安全還原 CPU 加速設定"
                     updateNotification()
                     sessionText = restoreBothBoostsText()
                 } finally {
@@ -609,7 +609,7 @@ class PerformanceSessionService : Service() {
     private fun applyBothBoostsText(
         cpu: CpuBoostOutcome,
         gpu: GpuBoostOutcome
-    ): String = "CPU：${cpuOutcomeText(cpu)}；GPU：${gpuOutcomeText(gpu)}"
+    ): String = "加速調整結果：\nCPU：${cpuOutcomeText(cpu)}\nGPU：${gpuOutcomeText(gpu)}"
 
     private fun restoreBothBoostsText(): String {
         val cpu = boostController.restore()
@@ -620,18 +620,18 @@ class PerformanceSessionService : Service() {
     private fun cpuOutcomeText(outcome: CpuBoostOutcome): String = when (outcome) {
         is CpuBoostOutcome.Applied -> {
             val targets = outcome.plans.joinToString { "${it.policyId}=${it.targetMinKHz} kHz" }
-            "已套用 ${outcome.effectivePercent}%（$targets），讀回驗證成功"
+            "已成功調整至 ${outcome.effectivePercent}%（$targets），回讀確認一致"
         }
-        is CpuBoostOutcome.Restored -> "已還原 ${outcome.restoredPolicies} 個 policy；外部變更未覆寫 ${outcome.externalChanges.joinToString()}"
+        is CpuBoostOutcome.Restored -> "已還原 ${outcome.restoredPolicies} 組 CPU 頻率設定；未覆蓋其他程式的變更：${outcome.externalChanges.joinToString()}"
         is CpuBoostOutcome.Rejected -> "未套用：" + outcome.reason
-        CpuBoostOutcome.NoChange -> "無需變更"
+        CpuBoostOutcome.NoChange -> "目前不需要調整"
     }
 
     private fun gpuOutcomeText(outcome: GpuBoostOutcome): String = when (outcome) {
-        is GpuBoostOutcome.Applied -> "已套用 ${outcome.effectivePercent}%（raw OPP ${outcome.plan.targetMinRaw}）並讀回驗證"
+        is GpuBoostOutcome.Applied -> "已設定 ${outcome.effectivePercent}% 加速目標（GPU 頻率檔位 ${outcome.plan.targetMinRaw}），回讀確認一致"
         is GpuBoostOutcome.Restored -> when {
             outcome.externalChange -> "偵測到外部變更，未覆寫"
-            outcome.changed -> "已還原原始 GPU 最低頻率"
+            outcome.changed -> "已恢復 GPU 原始最低頻率"
             else -> "無需變更"
         }
         is GpuBoostOutcome.Rejected -> "未套用：" + outcome.reason
@@ -641,7 +641,7 @@ class PerformanceSessionService : Service() {
     private fun cpuRestoreText(outcome: CpuBoostOutcome): String = when (outcome) {
         is CpuBoostOutcome.Restored -> "還原完成 ${outcome.restoredPolicies} 個 policy；外部變更未覆寫 ${outcome.externalChanges.joinToString()}"
         is CpuBoostOutcome.Rejected -> "還原失敗：" + outcome.reason
-        is CpuBoostOutcome.Applied -> "異常狀態：回報為已套用"
+        is CpuBoostOutcome.Applied -> "狀態異常：系統回報仍處於已套用狀態"
         CpuBoostOutcome.NoChange -> "無待還原項目"
     }
 
@@ -657,7 +657,7 @@ class PerformanceSessionService : Service() {
     }
 
     private fun outcomeText(outcome: CpuBoostOutcome): String = when (outcome) {
-        is CpuBoostOutcome.Applied -> "CPU Boost 已寫入並讀回驗證：${outcome.plans.size} 個 policy（目標 ${outcome.effectivePercent}%）"
+        is CpuBoostOutcome.Applied -> "CPU 加速設定已寫入並回讀驗證：${outcome.plans.size} 組頻率設定（目標 ${outcome.effectivePercent}%）"
         is CpuBoostOutcome.Restored -> "還原完成：${outcome.restoredPolicies} 個 policy；外部變更未覆寫：${outcome.externalChanges.joinToString().ifBlank { "無" }}"
         is CpuBoostOutcome.Rejected -> "未套用／未還原：" + outcome.reason
         CpuBoostOutcome.NoChange -> "目前沒有需要變更或還原的 CPU Boost"
