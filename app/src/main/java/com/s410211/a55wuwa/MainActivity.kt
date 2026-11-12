@@ -245,6 +245,11 @@ class MainActivity : Activity() {
                             MODE_PRIVATE
                         ).getBoolean("service_active", false)
                         if (sessionActive) {
+                            // Apply the actual Boost request against the selected Wuthering Waves
+                            // package before starting frame-time capture. Results remain explicit:
+                            // GameManager/CPU/GPU each report applied or the platform denial.
+                            pendingBoostPercent = PerformanceSessionService.DEFAULT_PERCENT
+                            requestSessionAction(PerformanceSessionService.ACTION_BOOST)
                             requestSessionAction(PerformanceSessionService.ACTION_START_FPS)
                         } else {
                             Toast.makeText(
