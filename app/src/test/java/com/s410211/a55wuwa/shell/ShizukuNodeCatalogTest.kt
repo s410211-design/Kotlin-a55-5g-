@@ -31,12 +31,13 @@ class ShizukuNodeCatalogTest {
     }
 
     @Test
-    fun catalogContainsObservedCpuAndGpuTelemetryOnly() {
+    fun catalogContainsObservedCpuGpuAndProcTelemetryOnly() {
         ShizukuNode.values().forEach { node ->
-            assertTrue(node.path.startsWith("/sys/"))
+            assertTrue(node.path.startsWith("/sys/") || node == ShizukuNode.PROC_STAT)
             assertTrue(node.path.none { it == ';' || it == '|' || it == '\n' || it == '\r' })
         }
         assertNull(ShizukuNode.fromPath("/sys/kernel/gpu/utilization_source"))
         assertNull(ShizukuNode.fromPath("/sys/kernel/gpu/available_utilization_sources"))
+        assertEquals(ShizukuNode.PROC_STAT, ShizukuNode.fromPath("/proc/stat"))
     }
 }
