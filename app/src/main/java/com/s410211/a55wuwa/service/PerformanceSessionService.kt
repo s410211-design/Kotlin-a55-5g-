@@ -9,6 +9,8 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import com.s410211.a55wuwa.MainActivity
 import com.s410211.a55wuwa.boost.CpuBoostController
@@ -39,6 +41,8 @@ class PerformanceSessionService : Service() {
     private lateinit var operations: ExecutorService
     private var sampleTask: ScheduledFuture<*>? = null
     private val thermalRestoreQueued = AtomicBoolean(false)
+    private val mainHandler = Handler(Looper.getMainLooper())
+    @Volatile private var lastThermalRestoreAttemptStatus: Int = -1
     @Volatile private var sessionText: String = "準備中"
     @Volatile private var lastThermalStatus: Int = -1
 
@@ -121,9 +125,11 @@ class PerformanceSessionService : Service() {
                         return@execute
                     }
                 }
-                stopSampling()
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf(startId)
+                mainHandler.post {
+                    stopSampling()
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf(startId)
+                }
             }
         }
         return START_STICKY
@@ -145,7 +151,7 @@ class PerformanceSessionService : Service() {
     private fun startSampling() {
         if (sampleTask != null) return
         sampleTask = scheduler.scheduleWithFixedDelay(
-            { sampleOnce() },
+            { runCatching { sampleOnce() } },
             0L,
             SAMPLE_INTERVAL_MS,
             TimeUnit.MILLISECONDS
@@ -188,9 +194,13 @@ class PerformanceSessionService : Service() {
         }
         snapshot.putString("session_status", sessionText).apply()
 
-        if (lastThermalStatus >= 3 && boostController.hasPendingJournal() &&
+        if (lastThermalStatus < 3) lastThermalRestoreAttemptStatus = -1
+        if (lastThermalStatus >= 3 &&
+            lastThermalRestoreAttemptStatus != lastThermalStatus &&
+            boostController.hasPendingJournal() &&
             thermalRestoreQueued.compareAndSet(false, true)
         ) {
+            lastThermalRestoreAttemptStatus = lastThermalStatus
             operations.execute {
                 try {
                     sessionText = "熱狀態升高，正在安全還原 CPU Boost"
