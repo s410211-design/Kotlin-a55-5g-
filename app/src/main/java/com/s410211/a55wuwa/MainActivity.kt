@@ -341,13 +341,13 @@ class MainActivity : Activity() {
             append("等待第一筆 CPU policy 樣本")
             return@buildString
         }
-        appendLine("頻率來源：scaling_cur_freq（核心回報值；不保證等於即時硬體時鐘）")
+        appendLine("頻率來源：scaling_cur_freq（核心回報值，單位 kHz；不保證等於即時硬體時鐘）")
         results.forEach { (policy, reading) ->
             appendLine()
             appendLine(policy.label + "（" + policy.id + "）")
             when (reading) {
                 is Reading.Value -> {
-                    val mhz = reading.value.toDouble() / 1_000_000.0
+                    val mhz = reading.value.toDouble() / 1_000.0
                     append("核心回報頻率：${String.format(Locale.US, "%.1f", mhz)} MHz")
                 }
                 else -> {
