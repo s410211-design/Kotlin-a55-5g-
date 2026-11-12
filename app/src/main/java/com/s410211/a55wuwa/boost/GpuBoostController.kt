@@ -34,9 +34,15 @@ class GpuBoostController(
             return@exclusive GpuBoostOutcome.Rejected("GPU 已有待還原記錄，請先還原")
         }
         val identity = gateway.snapshot()
-        if (!identity.userServiceConnected || identity.uid != 0) {
+        if (!identity.userServiceConnected) {
+            return@exclusive GpuBoostOutcome.Rejected("Shizuku UserService 尚未連線")
+        }
+        if (identity.uid == null) {
+            return@exclusive GpuBoostOutcome.Rejected("尚未確認 Shizuku 遠端 UID，請稍後重試 GPU Boost")
+        }
+        if (identity.uid != 0) {
             return@exclusive GpuBoostOutcome.Rejected(
-                "GPU 控制節點為 system:system；目前 Shizuku 身分不是 Root UID 0，拒絕嘗試寫入"
+                "GPU 控制節點為 system:system；目前是 UID ${identity.uid}，不是 Root UID 0，拒絕寫入"
             )
         }
 
