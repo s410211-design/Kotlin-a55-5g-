@@ -251,7 +251,12 @@ class PerformanceSessionService : Service() {
     private fun startSampling() {
         if (sampleTask != null) return
         sampleTask = scheduler.scheduleWithFixedDelay(
-            { runCatching { sampleOnce() } },
+            {
+                runCatching { sampleOnce() }.onFailure { error ->
+                    sessionText = "監控取樣錯誤：" + error.javaClass.simpleName
+                    updateNotification()
+                }
+            },
             0L,
             SAMPLE_INTERVAL_MS,
             TimeUnit.MILLISECONDS
@@ -362,7 +367,11 @@ class PerformanceSessionService : Service() {
             setFpsStatus("已開始擷取 SurfaceFlinger 遊戲 layer：$packageName")
             fpsTask?.cancel(true)
             fpsTask = fpsScheduler.scheduleWithFixedDelay(
-                { runCatching { sampleGameFps(packageName) } },
+                {
+                    runCatching { sampleGameFps(packageName) }.onFailure { error ->
+                        setFpsStatus("FPS 擷取錯誤：" + error.javaClass.simpleName)
+                    }
+                },
                 0L,
                 FPS_SAMPLE_INTERVAL_MS,
                 TimeUnit.MILLISECONDS
