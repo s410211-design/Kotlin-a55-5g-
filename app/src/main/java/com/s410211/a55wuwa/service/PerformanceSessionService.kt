@@ -26,6 +26,8 @@ import com.s410211.a55wuwa.boost.GpuBoostController
 import com.s410211.a55wuwa.boost.GpuBoostOutcome
 import com.s410211.a55wuwa.shell.ShizukuGateway
 import com.s410211.a55wuwa.telemetry.GpuNodeCatalog
+import com.s410211.a55wuwa.telemetry.CpuLoadTracker
+import com.s410211.a55wuwa.telemetry.CpuStatParser
 import com.s410211.a55wuwa.telemetry.GpuSysfsReader
 import com.s410211.a55wuwa.telemetry.Reading
 import com.s410211.a55wuwa.telemetry.SurfaceFlingerTimeStatsParser
@@ -57,6 +59,7 @@ class PerformanceSessionService : Service() {
     @Volatile private var lastFpsTotalFrames: Long? = null
     @Volatile private var lastFpsSampleAt: Long? = null
     private val thermalRestoreQueued = AtomicBoolean(false)
+    private val cpuLoadTracker = CpuLoadTracker()
     private var hudView: TextView? = null
     private var windowManager: WindowManager? = null
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -257,6 +260,19 @@ class PerformanceSessionService : Service() {
             if (reading is Reading.Value) {
                 snapshot.putString("cpu_policy_$index", reading.value.take(64))
             }
+        }
+
+        val procStat = gateway.readNode("/proc/stat", at)
+        if (procStat is Reading.Value) {
+            when (val parsed = CpuStatParser.parse(procStat.value, at)) {
+                is Reading.Value -> when (val load = cpuLoadTracker.update(parsed.value, at)) {
+                    is Reading.Value -> snapshot.putFloat("cpu_load_percent", load.value.toFloat())
+                    else -> snapshot.putString("cpu_load_status", readingReason(load))
+                }
+                else -> snapshot.putString("cpu_load_status", readingReason(parsed))
+            }
+        } else if (procStat != null) {
+            snapshot.putString("cpu_load_status", readingReason(procStat))
         }
 
         when (val thermal = ThermalStatusReader.read(this, at)) {
@@ -482,6 +498,8 @@ class PerformanceSessionService : Service() {
             appendLine("GPU clock raw：${rawGpu("/sys/kernel/gpu/gpu_clock")}")
             appendLine("CPU policy0：${cpuMHz(0)}")
             appendLine("CPU policy4：${cpuMHz(1)}")
+            val cpuLoad = prefs.getFloat("cpu_load_percent", -1f)
+            appendLine(if (cpuLoad >= 0f) String.format(java.util.Locale.US, "CPU 使用率：%.1f%%", cpuLoad) else "CPU 使用率：未取得")
             appendLine(fpsText)
             append("Thermal：$thermal")
         }
