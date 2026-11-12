@@ -12,11 +12,11 @@
 | ADB 執行位置 | D:\\platform-tools-latest-windows\\platform-tools\\adb.exe | 已確認 |
 | USB 裝置狀態 | device | 已確認；公開文件省略完整 serial |
 | 手機型號 | SM-A5560 | 已確認 |
-| Android 版本 / API | 未取得可獨立辨識輸出 | 待確認 |
+| Android 版本 / API | 第一輪未取得；第二輪確認 Android 17 / API 37 | 第二輪已確認 |
 | One UI 版本 | 未取得可獨立辨識輸出 | 待確認 |
 | Build fingerprint / security patch | 未取得可獨立辨識輸出 | 待確認 |
 | Kernel 版本 | 未取得可獨立辨識輸出 | 待確認 |
-| SoC / GPU 型號 | 本輪未取得可獨立辨識的屬性值 | 待確認；不可預填成實測結果 |
+| SoC / GPU 型號 | 第二輪確認 SoC property `s5e8845`、GPU `Samsung Xclipse 530` | 第二輪已確認 |
 
 ## 2. ADB 連線與 Shell 身分
 
@@ -304,7 +304,7 @@ adb shell cat /sys/class/devfreq/10e00000.sgpu/governor
 - gpu_freq_table / available_frequencies 必須與 current frequency 分開。
 - 直接 sysfs 與 Shizuku shell 通道必須共用同一來源語義、解析器及累積計數器 baseline。
 - 權限拒絕、路徑不存在、格式錯誤、暫時不可用及未知/受限必須分開表達。
-- 本輪沒有實際 GPU 數值，不得將任何 GPU 負載、頻率、溫度或 FPS 寫成已實測數據。
+- 第一輪只有閒置／影片播放基線，沒有遊戲負載樣本；第二輪可見的 SAMPLE 1–32 結果見第 9 節。GPU 頻率單位、GPU_TMU 意義及 FPS 仍未驗證。
 
 ## 9. 第二輪 60 秒診斷（2026-11-12 18:13）
 
