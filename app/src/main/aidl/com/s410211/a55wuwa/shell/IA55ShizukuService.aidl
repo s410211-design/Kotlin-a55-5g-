@@ -14,6 +14,10 @@ interface IA55ShizukuService {
     // Writes only explicitly allowlisted, policy-validated controls.
     String[] writeNode(int nodeId, String value, String expectedCurrentValue) = 4;
 
+    // Query and change only Android GameManager modes for a validated installed game.
+    String[] getGameMode(String packageName) = 8;
+    String[] setGameMode(String packageName, String mode) = 9;
+
     // Fixed SurfaceFlinger timestats commands; packageName is validated, never shell-interpolated.
     String[] startSurfaceFlingerTimeStats(String packageName) = 5;
     String[] dumpSurfaceFlingerTimeStats(String packageName) = 6;
