@@ -281,7 +281,7 @@ class MainActivity : Activity() {
         refreshButton.text = "重新整理裝置與 GPU 節點"
         page.addView(refreshButton, marginParams(top = 16))
         page.addView(label(
-            "目前版本：0.3.0 · GPU／CPU／Thermal 唯讀監控",
+            "目前版本：0.4.0 · Shizuku／GPU／CPU／Thermal 監控",
             11,
             Color.rgb(132, 148, 156),
             false
