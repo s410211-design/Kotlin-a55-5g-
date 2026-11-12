@@ -421,7 +421,7 @@ class ShizukuGateway(
         remote = null
         if (bindRequested && Shizuku.pingBinder()) {
             runCatching {
-                Shizuku.unbindUserService(userServiceArgs, serviceConnection, true)
+                Shizuku.unbindUserService(userServiceArgs, serviceConnection, removeUserServiceOnClose)
             }
         }
         bindRequested = false
@@ -430,6 +430,6 @@ class ShizukuGateway(
 
     private companion object {
         const val PERMISSION_REQUEST_CODE = 5501
-        const val USER_SERVICE_VERSION = 1
+        const val USER_SERVICE_VERSION = 2
     }
 }
