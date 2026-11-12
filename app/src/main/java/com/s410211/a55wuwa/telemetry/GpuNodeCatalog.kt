@@ -29,7 +29,7 @@ object GpuNodeCatalog {
         GpuNodeCandidate(
             "/sys/kernel/gpu/gpu_busy",
             GpuNodeRole.UTILIZATION_CANDIDATE,
-            "May expose an instantaneous percentage on some Exynos SGPU kernels; retail firmware not verified."
+            "SM-A5560 ADB samples vary within 0..100; treated as candidate instantaneous percentage, with source precision still to verify."
         ),
         GpuNodeCandidate(
             "/sys/kernel/gpu/gpu_clock",
