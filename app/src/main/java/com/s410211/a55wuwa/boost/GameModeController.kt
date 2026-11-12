@@ -31,8 +31,8 @@ class GameModeController(context: Context, private val gateway: ShizukuGateway) 
     fun hasPendingJournal(): Boolean = preferences.getBoolean(KEY_PRESENT, false)
 
     fun apply(packageName: String, downscalePercent: Int = DEFAULT_DOWNSCALE_PERCENT): GameModeOutcome = exclusive {
-        if (hasPendingJournal()) return@exclusive GameModeOutcome.Rejected("已有待還原的 GameManager 記錄")
         if (!isValidPackageName(packageName)) return@exclusive GameModeOutcome.Rejected("鳴潮套件名稱無效")
+        if (hasPendingJournal()) return@exclusive existingAppliedOutcome(packageName)
         if (downscalePercent !in SUPPORTED_DOWNSCALE_PERCENT) {
             return@exclusive GameModeOutcome.Rejected("渲染比例不在允許範圍")
         }
@@ -121,6 +121,36 @@ class GameModeController(context: Context, private val gateway: ShizukuGateway) 
         }
 
         GameModeOutcome.Applied(packageName, before.first, targetMode, downscalePercent)
+    }
+
+    /**
+     * Repeated launches are idempotent: if the exact saved intervention and
+     * target mode are still active, report the existing profile instead of
+     * rejecting or writing a second override.
+     */
+    private fun existingAppliedOutcome(packageName: String): GameModeOutcome {
+        val savedPackage = preferences.getString(KEY_PACKAGE, null)
+        if (savedPackage != packageName) {
+            return GameModeOutcome.Rejected("另一個遊戲仍有待還原的 GameManager 記錄")
+        }
+        val expectedConfig = preferences.getString(KEY_APPLIED_CONFIG, "").orEmpty()
+        if (expectedConfig.isBlank()) {
+            return GameModeOutcome.Rejected("GameManager 設定仍有未完成的記錄，請先還原")
+        }
+        val currentConfig = readConfig(packageName)
+            ?: return GameModeOutcome.Rejected("無法確認現有最佳化設定：$lastReadError")
+        val targetMode = preferences.getString(KEY_TARGET_MODE, null)
+            ?: return GameModeOutcome.Rejected("GameManager 記錄缺少目標模式，請先還原")
+        val currentMode = readMode(packageName)
+            ?: return GameModeOutcome.Rejected("無法確認現有 GameManager 模式：$lastReadError")
+        if (currentConfig != expectedConfig || currentMode.first != targetMode) {
+            return GameModeOutcome.Rejected("偵測到外部設定變更；不重新套用，請先還原或檢查設定")
+        }
+        val originalMode = preferences.getString(KEY_ORIGINAL_MODE, null)
+            ?: return GameModeOutcome.Rejected("GameManager 記錄缺少原始模式，請先還原")
+        val percent = (preferences.getString(KEY_DOWNSCALE, null)?.toFloatOrNull()
+            ?.times(100f)?.toInt()) ?: DEFAULT_DOWNSCALE_PERCENT
+        return GameModeOutcome.Applied(packageName, originalMode, targetMode, percent)
     }
 
     fun restore(): GameModeOutcome = exclusive {
