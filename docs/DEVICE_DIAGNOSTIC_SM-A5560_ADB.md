@@ -171,6 +171,14 @@ ls: /sys/class/thermal/thermal_zone0: Permission denied
 
 此結果證明一般 ADB Shell 在此次測試中無法跟隨 `thermal_zone0` 符號連結並列出目標目錄。尚未取得目標目錄的 Unix mode / owner / SELinux label，故不能把拒絕原因直接歸因於 SELinux 或 DAC；也不能推論其他 thermal zone 全部不可讀。
 
+使用者再執行 `adb shell ls -ldZ /sys/class/thermal/thermal_zone0`，成功取得符號連結本身的資訊：
+
+~~~text
+lrwxrwxrwx 1 root root u:object_r:sysfs:s0 0 2026-11-09 18:39 /sys/class/thermal/thermal_zone0 -> ../../devices/virtual/thermal/thermal_zone0
+~~~
+
+判定：連結 inode 本身可被一般 ADB Shell 查詢，其標籤為 `u:object_r:sysfs:s0`，目標相對路徑為 `../../devices/virtual/thermal/thermal_zone0`。**這是 symlink 本身的 mode/label，不是目標目錄的 mode/label**；不能用此標籤判定目標的 SELinux type。下一步應對解析後的實際路徑 `/sys/devices/virtual/thermal/thermal_zone0` 執行 `ls -ldZ`，再視結果測試 `type` / `temp`。拒絕原因仍未定（DAC / SELinux / target path traversal policy）。
+
 ## 5. 本輪結論
 
 ### 已確認
