@@ -4,8 +4,8 @@ package com.s410211.a55wuwa.shell
  * Stable IDs shared with the AIDL UserService. Only paths discovered or
  * explicitly approved for read-only diagnostics are included here.
  *
- * This catalog is deliberately read-only. Frequency-control writes will use
- * a separate policy after real-device UID and write semantics are verified.
+ * Read operations are allowlisted individually. The UserService separately
+ * restricts writes to CPUFreq minimum floors and validates live OPP/max values.
  */
 enum class ShizukuNode(val id: Int, val path: String) {
     GPU_BUSY(1, "/sys/kernel/gpu/gpu_busy"),
