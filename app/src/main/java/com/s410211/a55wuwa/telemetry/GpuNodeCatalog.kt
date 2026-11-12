@@ -42,6 +42,16 @@ object GpuNodeCatalog {
             "SM-A5560 observed devfreq current-frequency node; unit and freshness remain unverified."
         ),
         GpuNodeCandidate(
+            "/sys/kernel/gpu/gpu_min_clock",
+            GpuNodeRole.MINIMUM_CLOCK_LIMIT,
+            "SM-A5560 inventory confirms this limit node exists; writable owner is system:system, so Shell write access must not be assumed."
+        ),
+        GpuNodeCandidate(
+            "/sys/kernel/gpu/gpu_max_clock",
+            GpuNodeRole.MAXIMUM_CLOCK_LIMIT,
+            "SM-A5560 inventory confirms this limit node exists; writable owner is system:system, so Shell write access must not be assumed."
+        ),
+        GpuNodeCandidate(
             "/sys/class/devfreq/10e00000.sgpu/min_freq",
             GpuNodeRole.MINIMUM_CLOCK_LIMIT,
             "Read-only policy limit for frequency diagnostics; not the current frequency."
@@ -80,16 +90,6 @@ object GpuNodeCatalog {
             "/sys/kernel/gpu/mem_info",
             GpuNodeRole.MEMORY_INFORMATION,
             "Format and units require device-side validation."
-        ),
-        GpuNodeCandidate(
-            "/sys/kernel/gpu/utilization_source",
-            GpuNodeRole.UTILIZATION_SOURCE,
-            "Current utilization source identifier; must be read together with the available-source list."
-        ),
-        GpuNodeCandidate(
-            "/sys/kernel/gpu/available_utilization_sources",
-            GpuNodeRole.AVAILABLE_UTILIZATION_SOURCES,
-            "Advertised choices do not prove that a hardware counter is active or valid."
         )
     )
 }
