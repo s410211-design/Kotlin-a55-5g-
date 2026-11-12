@@ -87,6 +87,9 @@ class MainActivity : Activity() {
     private lateinit var stopFpsButton: Button
     private lateinit var sessionButton: Button
     private lateinit var boostButton: Button
+    private lateinit var boost70Button: Button
+    private lateinit var boost90Button: Button
+    private var pendingBoostPercent: Int = PerformanceSessionService.DEFAULT_PERCENT
     private lateinit var restoreButton: Button
     private lateinit var stopSessionButton: Button
     private var pendingServiceAction: String? = null
@@ -164,6 +167,16 @@ class MainActivity : Activity() {
             setOnClickListener {
                 requestSessionAction(PerformanceSessionService.ACTION_BOOST)
             }
+        }
+        boost70Button = Button(this).apply {
+            text = "Boost 70%（保守）"
+            isAllCaps = false
+            setOnClickListener { requestBoost(70) }
+        }
+        boost90Button = Button(this).apply {
+            text = "Boost 90%（高性能／高耗電）"
+            isAllCaps = false
+            setOnClickListener { requestBoost(90) }
         }
         fpsButton = Button(this).apply {
             text = "開始遊戲 FPS 監控"
@@ -278,7 +291,9 @@ class MainActivity : Activity() {
             "只調整 CPU/GPU 最低頻率 floor，不提高原廠最高上限、不改電壓、不停用溫控。GPU 節點屬 system:system，只有實際 Root UID 0 且 SELinux 允許時才會嘗試；Shell UID 2000 會拒絕 GPU 寫入。"
         ))
         page.addView(sessionButton, marginParams(top = 8))
+        page.addView(boost70Button, marginParams(top = 8))
         page.addView(boostButton, marginParams(top = 8))
+        page.addView(boost90Button, marginParams(top = 8))
         page.addView(restoreButton, marginParams(top = 8))
         page.addView(stopSessionButton, marginParams(top = 8))
     }
@@ -307,6 +322,11 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun requestBoost(percent: Int) {
+        pendingBoostPercent = percent
+        requestSessionAction(PerformanceSessionService.ACTION_BOOST)
+    }
+
     private fun requestSessionAction(action: String) {
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
@@ -327,7 +347,9 @@ class MainActivity : Activity() {
         sessionHandler.removeCallbacks(sessionSnapshotPoll)
         servicePollMisses = 0
         sessionHandler.post(sessionSnapshotPoll)
-        val intent = Intent(this, PerformanceSessionService::class.java).setAction(action)
+        val intent = Intent(this, PerformanceSessionService::class.java)
+            .setAction(action)
+            .putExtra(PerformanceSessionService.EXTRA_PERCENT, pendingBoostPercent)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(intent)
         } else {
