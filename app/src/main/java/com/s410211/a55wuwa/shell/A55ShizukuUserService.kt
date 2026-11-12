@@ -14,7 +14,7 @@ import java.io.File
 class A55ShizukuUserService : IA55ShizukuService.Stub() {
 
     override fun readNode(nodeId: Int): Array<String> {
-        val node = ShizukuNodeCatalog.fromId(nodeId)
+        val node = ShizukuNode.fromId(nodeId)
             ?: return response(STATUS_UNSUPPORTED, detail = "Node ID is not allowlisted")
 
         val fd = try {
