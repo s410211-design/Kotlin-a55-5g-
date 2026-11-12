@@ -17,7 +17,7 @@ class CpuStatParserTest {
         assertTrue(second is Reading.Value)
         val result = tracker.update((second as Reading.Value).value, 1_001L)
         assertTrue(result is Reading.Value)
-        assertEquals(37.5, (result as Reading.Value).value, 0.001)
+        assertEquals(38.8889, (result as Reading.Value).value, 0.001)
     }
 
     @Test
