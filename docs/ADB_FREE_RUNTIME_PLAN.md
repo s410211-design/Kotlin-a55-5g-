@@ -107,3 +107,36 @@ If a GPU sysfs node is denied to an ordinary app, there are only honest choices:
 3. Require root (not recommended for this project).
 
 There is no safe Kotlin trick that grants an ordinary app permissions denied by SELinux. The product must not claim “ADB-free full GPU telemetry” until the installed APK itself has demonstrated access.
+
+## 7. Latest final-inventory result — 2026-11-12 18:32
+
+The uploaded report materially improves the hardware map but does **not** complete the 60-sample trace:
+
+- Device/build/security identity confirmed: SM-A5560, s5e8845, Android 17/API 37, build CP2A.260605.016.A5560ZHUIEZJ1, kernel 6.1.162-android14-11, SELinux Enforcing, shell UID 2000.
+- GPU root nodes now actually read include model, busy, clock, table, governor/current-governor candidates, min/max vendor clocks, MM minimum clock, SIOP maximum clock, TMU, memory info and PM monitor. utilization_source and available_utilization_sources are absent from the complete root directory listing. The proc subtree (9 entries) was not recursively examined.
+- GPU SGPU domain now returns cur_freq=960000, target_freq=960000, min 450000 and max 1152000 in the inventory snapshot. In the 8 visible dynamic samples, gpu_clock, cur_freq and target_freq agree on every row and vary among 750000, 864000 and 960000. This is a stronger kernel-reported signal, not independent proof of hardware clock or confirmed unit.
+- gpu_busy ranges 64–91 for the 8 visible samples (mean 79.25). The single-value shape is percentage-like, but exact retail-kernel semantics/source remains unverified.
+- gpu_tmu ranges 64–66; mapping and unit remain unknown.
+- Thirteen devfreq domains are visible. Only the SGPU domain is substantially readable; MIF exposes its available-frequency list while most other domain attributes are denied.
+- CPUFreq policy mapping is confirmed: policy0 → CPUs 0–3, policy4 → CPUs 4–7; driver exynos_cpufreq; governor energy_aware. scaling_cur_freq and limits are readable; cpuinfo_cur_freq is denied. Linux ABI defines CPUFreq frequencies in kHz, but scaling_cur_freq usually reports the last requested P-state rather than guaranteed hardware clock: https://www.kernel.org/doc/html/latest/admin-guide/pm/cpufreq.html
+- All 8 thermal zones and 5 cooling-device entries exist, but the tested sysfs attributes are denied to shell. Thermal HAL through dumpsys thermalservice reports status MODERATE and sensor temperatures; public PowerManager supplies status/headroom, not those per-sensor Celsius values: https://developer.android.com/reference/android/os/PowerManager
+- /sys/class/power_supply is denied, but dumpsys battery returns battery data. Prefer public BatteryManager / battery-changed APIs in ordinary-app mode.
+- The 60-sample single-shell command stopped after SAMPLE 8. The post-sample thermal call returned adb.exe: no devices/emulators found. The report does not establish whether the cause was cable/port/transport/phone-service failure. Do not mark the 60-sample acceptance item complete.
+
+### Gate status after this report
+
+| Gate | Status | Evidence / remaining work |
+|---|---|---|
+| A — source inventory | **Partially complete** | GPU root + 13 devfreq + two CPU policies + 8 thermal zones + 5 cooling-device access results recorded. GPU proc subtree not recursively probed; 60 samples incomplete. |
+| B — ordinary app UID | **Not started / not passed** | APK must be directly installed on the phone and each exact source tested under the app UID. |
+| C — measurement semantics | **Partially complete** | CPUFreq policy topology/unit clarified; GPU clocks agree for 8 rows but unit/driver callback remain unknown; GPU busy/TMU still need semantics. |
+| D — app reliability | **Not passed** | Build, direct installation, USB-off test and 10-minute stability run still required. |
+
+### Implementation guidance from this report
+
+1. Prefer Android public APIs for device profile, thermal status/headroom, battery and memory where appropriate.
+2. Treat GPU busy, GPU clock, devfreq current/target/limits, GPU TMU, vendor memory info and PM monitor as distinct typed sources with raw value, unit, freshness and access channel.
+3. Do not add utilization_source or available_utilization_sources to the active SM-A5560 capability list; the current root directory listing did not contain them.
+4. Keep GPU frequency values unconverted until the SM-A5560 driver ABI confirms units and whether gpu_clock/cur_freq are actual hardware readings or requested/last-known values.
+5. Do not read/write GPU control nodes for telemetry discovery. Do not change governor, clocks, IFPO, LLC, swap or thermal controls.
+6. The next milestone is an APK installed directly on the A55, with a per-source capability report and no PC ADB dependency. If ordinary UID access to a GPU node is denied, mark that metric unavailable in no-shell mode; do not try to bypass Android security.
