@@ -5,6 +5,8 @@ import android.system.Os
 import android.system.OsConstants
 import androidx.annotation.Keep
 import java.io.File
+import java.io.ByteArrayOutputStream
+import java.util.concurrent.TimeUnit
 
 /**
  * Runs in the identity Shizuku actually provides (UID 2000 for ADB backend,
@@ -155,6 +157,117 @@ class A55ShizukuUserService : IA55ShizukuService.Stub() {
         val availablePath: String
     )
 
+    override fun startSurfaceFlingerTimeStats(packageName: String): Array<String> {
+        if (!isValidPackageName(packageName)) {
+            return response(STATUS_INVALID_DATA, detail = "Invalid game package name")
+        }
+        return runSurfaceFlingerTimestats(listOf("-clear", "-enable"), null)
+    }
+
+    override fun dumpSurfaceFlingerTimeStats(packageName: String): Array<String> {
+        if (!isValidPackageName(packageName)) {
+            return response(STATUS_INVALID_DATA, detail = "Invalid game package name")
+        }
+        return runSurfaceFlingerTimestats(listOf("-dump"), packageName)
+    }
+
+    override fun stopSurfaceFlingerTimeStats(): Array<String> =
+        runSurfaceFlingerTimestats(listOf("-disable"), null)
+
+    /**
+     * Runs only fixed SurfaceFlinger timestats arguments; no shell and no
+     * caller-controlled executable/flags. Output is bounded and filtered to
+     * the requested game's layer before crossing Binder.
+     */
+    private fun runSurfaceFlingerTimestats(
+        arguments: List<String>,
+        packageFilter: String?
+    ): Array<String> {
+        val process = try {
+            ProcessBuilder(
+                listOf("/system/bin/dumpsys", "SurfaceFlinger", "--timestats") + arguments
+            ).redirectErrorStream(true).start()
+        } catch (error: SecurityException) {
+            return response(STATUS_PERMISSION_DENIED, detail = "dumpsys execution denied")
+        } catch (error: Exception) {
+            return response(STATUS_ERROR, detail = "Cannot start dumpsys: ${error.javaClass.simpleName}")
+        }
+
+        val output = ByteArrayOutputStream()
+        val oversized = java.util.concurrent.atomic.AtomicBoolean(false)
+        val reader = Thread({
+            try {
+                process.inputStream.use { input ->
+                    val buffer = ByteArray(4_096)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count <= 0) break
+                        if (output.size() + count > MAX_COMMAND_OUTPUT_BYTES) {
+                            oversized.set(true)
+                            break
+                        }
+                        output.write(buffer, 0, count)
+                    }
+                }
+            } catch (_: Exception) {
+                // Process termination and stream closure are reported below.
+            }
+        }, "a55-surfaceflinger-output").apply { isDaemon = true }
+        reader.start()
+
+        val completed = try {
+            process.waitFor(COMMAND_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            false
+        }
+        if (!completed || oversized.get()) {
+            runCatching { process.destroyForcibly() }
+            runCatching { process.inputStream.close() }
+            runCatching { reader.join(500L) }
+            return if (oversized.get()) {
+                response(STATUS_OUTPUT_TOO_LARGE, detail = "SurfaceFlinger output exceeded size limit")
+            } else {
+                response(STATUS_TEMPORARY, detail = "SurfaceFlinger command timed out or was interrupted")
+            }
+        }
+        runCatching { reader.join(1_000L) }
+        if (reader.isAlive) {
+            runCatching { process.destroyForcibly() }
+            return response(STATUS_TEMPORARY, detail = "SurfaceFlinger output reader did not finish")
+        }
+
+        val raw = String(output.toByteArray(), Charsets.UTF_8)
+        if (runCatching { process.exitValue() }.getOrDefault(-1) != 0) {
+            return response(
+                STATUS_ERROR,
+                detail = raw.take(MAX_DETAIL_CHARS).ifBlank { "dumpsys returned non-zero exit status" }
+            )
+        }
+
+        val filtered = if (packageFilter == null) raw else filterTimestatsForPackage(raw, packageFilter)
+        if (packageFilter != null && filtered.isBlank()) {
+            return response(STATUS_TEMPORARY, detail = "No active SurfaceFlinger layer matched the game package")
+        }
+        return response(STATUS_OK, rawValue = filtered)
+    }
+
+    private fun filterTimestatsForPackage(output: String, packageName: String): String {
+        val result = StringBuilder()
+        var includeSection = false
+        output.lineSequence().forEach { line ->
+            if (line.trimStart().startsWith("layerName")) {
+                includeSection = line.contains(packageName)
+            }
+            if (includeSection) result.appendLine(line)
+        }
+        return result.toString().take(MAX_COMMAND_OUTPUT_BYTES)
+    }
+
+    private fun isValidPackageName(value: String): Boolean =
+        value.length in 3..255 &&
+            Regex("^[A-Za-z0-9_]+(?:\\\\.[A-Za-z0-9_]+)+$").matches(value)
+
     override fun getIdentity(): Array<String> {
         val selinuxContext = runCatching {
             File("/proc/self/attr/current").readText(Charsets.UTF_8).trim().take(256)
@@ -194,6 +307,8 @@ class A55ShizukuUserService : IA55ShizukuService.Stub() {
     private companion object {
         const val MAX_NODE_BYTES = 4_096
         const val MAX_DETAIL_CHARS = 256
+        const val MAX_COMMAND_OUTPUT_BYTES = 262_144
+        const val COMMAND_TIMEOUT_SECONDS = 5L
         const val STATUS_OK = "OK"
         const val STATUS_UNSUPPORTED = "UNSUPPORTED"
         const val STATUS_PERMISSION_DENIED = "PERMISSION_DENIED"
