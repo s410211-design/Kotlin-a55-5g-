@@ -26,6 +26,7 @@ import com.s410211.a55wuwa.shell.ShizukuGateway
 import com.s410211.a55wuwa.telemetry.GpuNodeCatalog
 import com.s410211.a55wuwa.telemetry.GpuSysfsReader
 import com.s410211.a55wuwa.telemetry.Reading
+import com.s410211.a55wuwa.telemetry.SurfaceFlingerTimeStatsParser
 import com.s410211.a55wuwa.telemetry.ThermalStatusReader
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -47,6 +48,11 @@ class PerformanceSessionService : Service() {
     private lateinit var scheduler: ScheduledExecutorService
     private lateinit var operations: ExecutorService
     private var sampleTask: ScheduledFuture<*>? = null
+    private var fpsTask: ScheduledFuture<*>? = null
+    @Volatile private var fpsCaptureActive = false
+    @Volatile private var fpsCaptureRequested = false
+    @Volatile private var lastFpsTotalFrames: Long? = null
+    @Volatile private var lastFpsSampleAt: Long? = null
     private val thermalRestoreQueued = AtomicBoolean(false)
     private var hudView: TextView? = null
     private var windowManager: WindowManager? = null
@@ -65,6 +71,8 @@ class PerformanceSessionService : Service() {
             Thread(task, "a55-session-operations").apply { isDaemon = true }
         }
         boostController = CpuBoostController(applicationContext, gatewayPlaceholder())
+        fpsCaptureRequested = getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE)
+            .getBoolean("fps_capture_requested", false)
         gateway.start()
         if (boostController.hasPendingJournal()) {
             sessionText = "偵測到待還原的 CPU Boost 記錄"
@@ -86,6 +94,9 @@ class PerformanceSessionService : Service() {
                     sessionText = outcomeText(result)
                     updateNotification()
                 }
+            }
+            if (state.userServiceConnected && fpsCaptureRequested && !fpsCaptureActive) {
+                operations.execute { startFpsCapture() }
             }
         }
         gateway = created
@@ -112,6 +123,19 @@ class PerformanceSessionService : Service() {
                 sessionText = "HUD 已隱藏"
                 updateNotification()
             }
+            ACTION_START_FPS -> {
+                fpsCaptureRequested = true
+                getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE)
+                    .edit().putBoolean("fps_capture_requested", true).apply()
+                operations.execute {
+                    if (!awaitUserService()) {
+                        setFpsStatus("FPS 未啟動：Shizuku UserService 未連線")
+                    } else {
+                        startFpsCapture()
+                    }
+                }
+            }
+            ACTION_STOP_FPS -> operations.execute { stopFpsCapture() }
             ACTION_BOOST -> {
                 val percent = intent?.getIntExtra(EXTRA_PERCENT, DEFAULT_PERCENT)
                     ?: DEFAULT_PERCENT
@@ -133,6 +157,7 @@ class PerformanceSessionService : Service() {
                 updateNotification()
             }
             ACTION_STOP -> operations.execute {
+                stopFpsCapture()
                 if (boostController.hasPendingJournal()) {
                     if (!awaitUserService()) {
                         sessionText = "停止暫緩：無法連線 Shizuku，尚有 Boost 還原記錄"
@@ -240,6 +265,109 @@ class PerformanceSessionService : Service() {
         if (lastThermalStatus != previousThermalStatus) updateNotification()
     }
 
+    private fun startFpsCapture() {
+        if (fpsCaptureActive) return
+        val prefs = getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE)
+        val packageName = prefs.getString("game_package", null)
+        if (packageName.isNullOrBlank()) {
+            setFpsStatus("尚未選取鳴潮套件；請先透過啟動器按鈕啟動遊戲")
+            return
+        }
+        val result = gateway.startSurfaceFlingerTimeStats(
+            packageName,
+            SystemClock.elapsedRealtime()
+        )
+        if (result !is Reading.Value) {
+            setFpsStatus("FPS 啟動失敗：" + readingReason(result))
+            return
+        }
+        fpsCaptureActive = true
+        fpsCaptureRequested = true
+        lastFpsTotalFrames = null
+        lastFpsSampleAt = null
+        setFpsStatus("已開始擷取 SurfaceFlinger 遊戲 layer：$packageName")
+        fpsTask?.cancel(true)
+        fpsTask = scheduler.scheduleWithFixedDelay(
+            { runCatching { sampleGameFps(packageName) } },
+            0L,
+            FPS_SAMPLE_INTERVAL_MS,
+            TimeUnit.MILLISECONDS
+        )
+    }
+
+    private fun sampleGameFps(packageName: String) {
+        if (!fpsCaptureActive) return
+        val at = SystemClock.elapsedRealtime()
+        val raw = gateway.dumpSurfaceFlingerTimeStats(packageName, at)
+        if (raw !is Reading.Value) {
+            setFpsStatus("FPS 暫時不可用：" + readingReason(raw))
+            return
+        }
+        when (val parsed = SurfaceFlingerTimeStatsParser.parse(raw.value, packageName, at)) {
+            is Reading.Value -> {
+                val current = parsed.value
+                val previousFrames = lastFpsTotalFrames
+                val previousAt = lastFpsSampleAt
+                val windowFps = if (
+                    previousFrames != null && previousAt != null &&
+                    current.totalFrames >= previousFrames && at > previousAt &&
+                    current.totalFrames > previousFrames
+                ) {
+                    (current.totalFrames - previousFrames) * 1_000.0 / (at - previousAt)
+                } else null
+
+                lastFpsTotalFrames = current.totalFrames
+                lastFpsSampleAt = at
+                val prefs = getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE)
+                prefs.edit()
+                    .putString("fps_status", if (windowFps == null) "等待下一個有效影格區間" else "有效")
+                    .putFloat("fps_cumulative", current.cumulativeAverageFps.toFloat())
+                    .putString("fps_window", windowFps?.toString())
+                    .putLong("fps_total_frames", current.totalFrames)
+                    .putString("fps_layer", current.layerName.take(240))
+                    .putLong("fps_sampled_at", at)
+                    .apply()
+                updateHud()
+            }
+            else -> setFpsStatus("FPS layer 尚未有效：" + readingReason(parsed))
+        }
+    }
+
+    private fun stopFpsCapture() {
+        fpsTask?.cancel(true)
+        fpsTask = null
+        if (fpsCaptureActive) {
+            gateway.stopSurfaceFlingerTimeStats(SystemClock.elapsedRealtime())
+        }
+        fpsCaptureActive = false
+        fpsCaptureRequested = false
+        lastFpsTotalFrames = null
+        lastFpsSampleAt = null
+        getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE)
+            .edit()
+            .putBoolean("fps_capture_requested", false)
+            .putString("fps_status", "FPS 擷取已停止")
+            .remove("fps_window")
+            .apply()
+    }
+
+    private fun setFpsStatus(status: String) {
+        getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE)
+            .edit().putString("fps_status", status.take(240)).apply()
+        updateHud()
+    }
+
+    private fun readingReason(reading: Reading<*>): String = when (reading) {
+        is Reading.Value -> "有效"
+        is Reading.AwaitingSample -> reading.reason
+        is Reading.Unsupported -> reading.reason
+        is Reading.PermissionDenied -> reading.reason
+        is Reading.NotFound -> reading.reason
+        is Reading.InvalidData -> reading.reason
+        is Reading.TemporarilyUnavailable -> reading.reason
+        is Reading.Error -> reading.reason
+    }
+
     private fun showHud(): Boolean {
         if (!Settings.canDrawOverlays(this)) return false
         if (hudView != null) return true
@@ -298,6 +426,15 @@ class PerformanceSessionService : Service() {
                 ?: return "—"
             return String.format(java.util.Locale.US, "%.0f MHz", khz / 1_000.0)
         }
+        val fpsWindow = prefs.getString("fps_window", null)?.toDoubleOrNull()
+        val fpsCumulative = prefs.getFloat("fps_cumulative", -1f)
+        val fpsText = when {
+            fpsWindow != null && fpsWindow.isFinite() && fpsWindow > 0.0 ->
+                String.format(java.util.Locale.US, "%.1f FPS (5s)", fpsWindow)
+            fpsCumulative > 0f ->
+                String.format(java.util.Locale.US, "%.1f FPS (session avg)", fpsCumulative)
+            else -> "FPS：${prefs.getString("fps_status", "未啟動") ?: "未啟動"}"
+        }
         val thermal = when (prefs.getInt("thermal_status", -1)) {
             0 -> "NONE"
             1 -> "LIGHT"
@@ -314,6 +451,7 @@ class PerformanceSessionService : Service() {
             appendLine("GPU clock raw：${rawGpu("/sys/kernel/gpu/gpu_clock")}")
             appendLine("CPU policy0：${cpuMHz(0)}")
             appendLine("CPU policy4：${cpuMHz(1)}")
+            appendLine(fpsText)
             append("Thermal：$thermal")
         }
     }
@@ -403,6 +541,7 @@ class PerformanceSessionService : Service() {
 
     override fun onDestroy() {
         stopSampling()
+        fpsTask?.cancel(true)
         hideHud()
         getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE)
             .edit().putBoolean("service_active", false).apply()
@@ -419,12 +558,15 @@ class PerformanceSessionService : Service() {
         const val ACTION_STOP = "com.s410211.a55wuwa.action.STOP"
         const val ACTION_SHOW_HUD = "com.s410211.a55wuwa.action.SHOW_HUD"
         const val ACTION_HIDE_HUD = "com.s410211.a55wuwa.action.HIDE_HUD"
+        const val ACTION_START_FPS = "com.s410211.a55wuwa.action.START_FPS"
+        const val ACTION_STOP_FPS = "com.s410211.a55wuwa.action.STOP_FPS"
         const val EXTRA_PERCENT = "boost_percent"
         const val DEFAULT_PERCENT = 80
         const val SNAPSHOT_PREFS = "performance_session_snapshot"
         private const val CHANNEL_ID = "a55_performance_session"
         private const val NOTIFICATION_ID = 5502
         private const val SAMPLE_INTERVAL_MS = 1_000L
+        private const val FPS_SAMPLE_INTERVAL_MS = 5_000L
         private const val SHIZUKU_WAIT_ATTEMPTS = 40
         private const val SHIZUKU_WAIT_INTERVAL_MS = 250L
         private val CPU_CURRENT_PATHS = listOf(
