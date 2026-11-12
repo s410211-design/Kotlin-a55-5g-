@@ -33,7 +33,7 @@ uid=2000(shell) gid=2000(shell)
 context=u:r:shell:s0
 ~~~
 
-判定：目前命令以 Android shell UID 2000 執行，不是 Root（UID 0）。即使檔案 Unix mode 顯示可讀，SELinux 仍可能額外拒絕存取。本輪沒有取得可獨立辨識的 getenforce 回傳值，因此 SELinux enforcing/permissive 狀態待確認。id 輸出中列出的群組包含 input、log、adb、sdcard_rw、sdcard_r、readproc、readtracefs 等；不能確定 groups 指令是否另有獨立成功輸出。
+判定：目前命令以 Android shell UID 2000 執行，不是 Root（UID 0）。id 輸出中列出的群組包含 input、log、adb、sdcard_rw、sdcard_r、readproc、readtracefs 等；`groups` 指令尚無可獨立辨識的輸出。使用者後續單獨執行 `adb shell getenforce`，明確回傳 `Enforcing`，因此 SELinux 強制執行模式已確認。Unix DAC 權限允許讀取，不代表 SELinux 一定放行，仍須對各節點實際 `cat` 驗證。
 
 ## 3. GPU sysfs 探測
 
@@ -43,17 +43,31 @@ adb shell ls -l /sys/kernel/gpu/ 成功列出目錄內容，證明該目錄存�
 
 | 節點 | 清單中可見 | 實際 cat 結果 |
 |---|---:|---|
-| gpu_busy | 是 | 尚無可獨立辨識的輸出 |
-| gpu_clock | 是 | 尚無可獨立辨識的輸出 |
-| gpu_freq_table | 是 | 尚無可獨立辨識的輸出 |
-| gpu_tmu | 是 | 尚無可獨立辨識的輸出 |
-| gpu_model | 是 | 尚無可獨立辨識的輸出 |
-| mem_info | 是 | 尚無可獨立辨識的輸出 |
-| sgpu_pm_monitor | 是 | 尚無可獨立辨識的輸出 |
+| gpu_busy | 是 | 尚未測試 |
+| gpu_clock | 是 | 尚未測試 |
+| gpu_freq_table | 是 | 尚未測試 |
+| gpu_tmu | 是 | 尚未測試 |
+| gpu_model | 是 | 尚未測試 |
+| mem_info | 是 | 尚未測試 |
+| sgpu_pm_monitor | 是 | 尚未測試 |
 | utilization_source | 否 | 本次清單未見 |
 | available_utilization_sources | 否 | 本次清單未見 |
 
-清單中的 -r--r--r-- root root 等權限字串，只是 Unix mode 的初步線索；必須以每個節點獨立 cat 結果驗證實際存取。目錄列出不等於成功讀取。
+使用者後續執行 `adb shell ls -lZ /sys/kernel/gpu/` 成功，取得以下監控候選節點權限：
+
+| 節點 | Mode | Owner:Group | SELinux label | Unix DAC（UID 2000） |
+|---|---:|---|---|---|
+| gpu_busy | 0444 | root:root | sysfs_gpu | other-read 有開放 |
+| gpu_clock | 0444 | root:root | sysfs_gpu | other-read 有開放 |
+| gpu_freq_table | 0444 | system:system | sysfs_gpu | other-read 有開放 |
+| gpu_tmu | 0444 | root:root | sysfs_gpu | other-read 有開放 |
+| gpu_model | 0444 | root:root | sysfs_gpu | other-read 有開放 |
+| mem_info | 0444 | root:root | sysfs_gpu | other-read 有開放 |
+| sgpu_pm_monitor | 0444 | root:root | sysfs_gpu | other-read 有開放 |
+
+上述節點完整 SELinux label 均為 `u:object_r:sysfs_gpu:s0`。這代表傳統 Unix DAC 權限沒有阻擋 shell UID 2000 讀取這些節點；但 SELinux 已確認為 Enforcing，仍可能依 domain/type policy 拒絕讀取。**目前不能宣稱這些節點已可讀，必須以逐項 `cat` 的實際結果確認。**
+
+另外，清單中的部分控制節點（例如 `gpu_ifpo_control` mode 0640、`gpu_ifpo_runtime_control` mode 0640）沒有 other-read 權限；一般 shell UID 2000 依 DAC 即不可讀。不得對任何控制節點執行寫入。
 
 ### 3.2 可寫節點安全注意
 
@@ -88,6 +102,8 @@ adb shell ls -l /sys/class/devfreq/ 的清單可見以下項目：
 ### 已確認
 1. Windows ADB 工具可啟動，ADB 1.0.41 / Platform Tools 37.0.1。
 2. USB ADB 裝置狀態為 device。
+3. `adb shell getenforce` 明確回傳 `Enforcing`，SELinux 為強制執行模式。
+4. GPU 監控候選節點的 Unix mode 與 SELinux label 已取得；多個候選節點有 other-read 權限，label 為 `u:object_r:sysfs_gpu:s0`。這尚不等於 SELinux 放行或 `cat` 成功。
 3. 手機型號輸出為 SM-A5560。
 4. ADB shell 身分為 UID 2000，不是 Root。
 5. /sys/kernel/gpu/ 目錄可列出，清單包含 GPU 負載、時鐘、頻率表、溫度/模型/記憶體等候選節點。
@@ -95,13 +111,12 @@ adb shell ls -l /sys/class/devfreq/ 的清單可見以下項目：
 
 ### 尚未確認
 1. Android release、API level、One UI、Build fingerprint、security patch、kernel release。
-2. SELinux 模式。
-3. 各 GPU sysfs 節點實際內容與讀取權限。
-4. SGPU devfreq 的 cur_freq 等檔案是否存在且可讀。
-5. gpu_busy 的資料語義（即時百分比、累積計數器或其他格式）。
-6. gpu_clock 是否為當次即時頻率，或可能回傳 last-known/cache 值。
-7. GPU 溫度來源與單位。
-8. Shizuku 是否能取得額外且實際可用的讀取能力。
+2. 各 GPU sysfs 節點實際內容，以及 SELinux Enforcing 下是否允許 `cat`。
+3. SGPU devfreq 的 cur_freq 等檔案是否存在且可讀。
+4. gpu_busy 的資料語義（即時百分比、累積計數器或其他格式）。
+5. gpu_clock 是否為當次即時頻率，或可能回傳 last-known/cache 值。
+6. GPU 溫度來源與單位。
+7. Shizuku 是否能取得額外且實際可用的讀取能力。
 
 ## 6. 下一輪唯讀診斷命令
 
