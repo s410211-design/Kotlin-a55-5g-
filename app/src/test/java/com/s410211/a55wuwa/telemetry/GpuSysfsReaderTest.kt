@@ -6,16 +6,16 @@ import org.junit.Test
 class GpuSysfsReaderTest {
     @Test
     fun mapsPermissionErrorsSeparatelyFromMissingNode() {
-        assertTrue(LinuxErrnoMapper.toReading(1, "test", 1L) is Reading.PermissionDenied)
-        assertTrue(LinuxErrnoMapper.toReading(13, "test", 1L) is Reading.PermissionDenied)
-        assertTrue(LinuxErrnoMapper.toReading(2, "test", 1L) is Reading.NotFound)
+        assertTrue(LinuxErrnoMapper.toReading<String>(1, "test", 1L) is Reading.PermissionDenied)
+        assertTrue(LinuxErrnoMapper.toReading<String>(13, "test", 1L) is Reading.PermissionDenied)
+        assertTrue(LinuxErrnoMapper.toReading<String>(2, "test", 1L) is Reading.NotFound)
     }
 
     @Test
     fun mapsIoAndInterruptedReadsAsTemporary() {
-        assertTrue(LinuxErrnoMapper.toReading(4, "test", 1L) is Reading.TemporarilyUnavailable)
-        assertTrue(LinuxErrnoMapper.toReading(5, "test", 1L) is Reading.TemporarilyUnavailable)
-        assertTrue(LinuxErrnoMapper.toReading(11, "test", 1L) is Reading.TemporarilyUnavailable)
+        assertTrue(LinuxErrnoMapper.toReading<String>(4, "test", 1L) is Reading.TemporarilyUnavailable)
+        assertTrue(LinuxErrnoMapper.toReading<String>(5, "test", 1L) is Reading.TemporarilyUnavailable)
+        assertTrue(LinuxErrnoMapper.toReading<String>(11, "test", 1L) is Reading.TemporarilyUnavailable)
     }
 
     @Test
