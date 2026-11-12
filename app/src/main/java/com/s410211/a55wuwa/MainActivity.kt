@@ -240,24 +240,10 @@ class MainActivity : Activity() {
             } else {
                 runCatching { startActivity(launchIntent) }
                     .onSuccess {
-                        val sessionActive = getSharedPreferences(
-                            PerformanceSessionService.SNAPSHOT_PREFS,
-                            MODE_PRIVATE
-                        ).getBoolean("service_active", false)
-                        if (sessionActive) {
-                            // Apply the actual Boost request against the selected Wuthering Waves
-                            // package before starting frame-time capture. Results remain explicit:
-                            // GameManager/CPU/GPU each report applied or the platform denial.
-                            pendingBoostPercent = PerformanceSessionService.DEFAULT_PERCENT
-                            requestSessionAction(PerformanceSessionService.ACTION_BOOST)
-                            requestSessionAction(PerformanceSessionService.ACTION_START_FPS)
-                        } else {
-                            Toast.makeText(
-                                this,
-                                "已記錄遊戲套件；請先啟動背景監控，再按「開始遊戲 FPS 監控」。",
-                                Toast.LENGTH_LONG
-                            ).show()
-                        }
+                        // Launching the selected game now starts the foreground service and
+                        // issues the real Boost request immediately; FPS capture stays user-controlled.
+                        pendingBoostPercent = PerformanceSessionService.DEFAULT_PERCENT
+                        requestSessionAction(PerformanceSessionService.ACTION_BOOST)
                     }
                     .onFailure {
                         Toast.makeText(this, "啟動失敗：${it.javaClass.simpleName}", Toast.LENGTH_LONG).show()
