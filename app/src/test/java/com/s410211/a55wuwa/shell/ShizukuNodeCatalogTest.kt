@@ -17,17 +17,17 @@ class ShizukuNodeCatalogTest {
     @Test
     fun everyNodeHasAnExactIdAndPathLookup() {
         ShizukuNode.values().forEach { node ->
-            assertEquals(node, ShizukuNodeCatalog.fromId(node.id))
-            assertEquals(node, ShizukuNodeCatalog.fromPath(node.path))
+            assertEquals(node, ShizukuNode.fromId(node.id))
+            assertEquals(node, ShizukuNode.fromPath(node.path))
         }
     }
 
     @Test
     fun arbitraryPathsAndIdsAreNotAccepted() {
-        assertNull(ShizukuNodeCatalog.fromPath("/system/bin/sh"))
-        assertNull(ShizukuNodeCatalog.fromPath("/sys/kernel/gpu/gpu_governor"))
-        assertNull(ShizukuNodeCatalog.fromId(-1))
-        assertNotNull(ShizukuNodeCatalog.fromId(ShizukuNode.GPU_BUSY.id))
+        assertNull(ShizukuNode.fromPath("/system/bin/sh"))
+        assertNull(ShizukuNode.fromPath("/sys/kernel/gpu/gpu_governor"))
+        assertNull(ShizukuNode.fromId(-1))
+        assertNotNull(ShizukuNode.fromId(ShizukuNode.GPU_BUSY.id))
     }
 
     @Test
@@ -36,7 +36,7 @@ class ShizukuNodeCatalogTest {
             assertTrue(node.path.startsWith("/sys/"))
             assertTrue(node.path.none { it == ';' || it == '|' || it == '\n' || it == '\r' })
         }
-        assertNull(ShizukuNodeCatalog.fromPath("/sys/kernel/gpu/utilization_source"))
-        assertNull(ShizukuNodeCatalog.fromPath("/sys/kernel/gpu/available_utilization_sources"))
+        assertNull(ShizukuNode.fromPath("/sys/kernel/gpu/utilization_source"))
+        assertNull(ShizukuNode.fromPath("/sys/kernel/gpu/available_utilization_sources"))
     }
 }
