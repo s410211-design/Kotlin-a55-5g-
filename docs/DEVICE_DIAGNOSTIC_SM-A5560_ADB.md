@@ -112,7 +112,15 @@ adb shell ls -l /sys/class/devfreq/ 的清單可見以下項目：
 170000c0.devfreq_icpu
 ~~~
 
-判定：devfreq 目錄可列出，且清單包含 SGPU 項目 10e00000.sgpu。使用者於 2026-11-12 執行 `adb shell cat /sys/class/devfreq/10e00000.sgpu/cur_freq`，成功回傳原始值 `0`，沒有 Permission denied。這證明該路徑本次可讀，但 `0` 尚不能被判定為真實 GPU 頻率 0 Hz；需要與 GPU 負載、其他頻率來源及裝置活動狀態交叉驗證。`name`、`available_frequencies`、`min_freq`、`max_freq`、`governor` 仍未測試。
+判定：devfreq 目錄可列出，且清單包含 SGPU 項目 10e00000.sgpu。使用者於 2026-11-12 執行 `adb shell cat /sys/class/devfreq/10e00000.sgpu/cur_freq`，成功回傳原始值 `0`，沒有 Permission denied。這證明該路徑本次可讀，但 `0` 尚不能被判定為真實 GPU 頻率 0 Hz；需要與 GPU 負載、其他頻率來源及裝置活動狀態交叉驗證。
+
+使用者接著執行 `adb shell cat /sys/class/devfreq/10e00000.sgpu/available_frequencies`，成功回傳原始頻率表：
+
+~~~text
+1300000 1152000 1025000 960000 864000 750000 648000 544000 450000
+~~~
+
+依 Linux devfreq ABI，`available_frequencies` 顯示該 devfreq 物件的可用頻率快照，不代表當前頻率，也不一定受 min/max 限制（參考 Linux kernel ABI 文件）。因此將這九個原始數字記為可用頻率檔位。**本次裝置輸出本身未附單位，文件暫保留 raw value，不自行標成 Hz 或 kHz。** `name`、`min_freq`、`max_freq`、`governor` 仍未測試。
 
 本輪曾使用字面佔位路徑 /sys/class/devfreq/目錄名稱/...，因此得到 No such file or directory。這是因為路徑沒有替換成真實目錄名稱，不能據此判斷 SGPU 節點不存在或權限遭拒。後續應使用實際路徑 /sys/class/devfreq/10e00000.sgpu。
 
@@ -128,10 +136,12 @@ adb shell ls -l /sys/class/devfreq/ 的清單可見以下項目：
 5. /sys/kernel/gpu/ 目錄可列出，清單包含 GPU 負載、時鐘、頻率表、溫度/模型/記憶體等候選節點。
 6. /sys/class/devfreq/ 目錄可列出，清單包含 10e00000.sgpu。
 
+7. SGPU `available_frequencies` 可讀，回傳 9 個原始頻率檔位；單位尚待此機核心介面或其他可核對來源確認。
+
 ### 尚未確認
 1. Android release、API level、One UI、Build fingerprint、security patch、kernel release。
 2. 各 GPU sysfs 節點實際內容，以及 SELinux Enforcing 下是否允許 `cat`。
-3. SGPU devfreq 的 cur_freq 等檔案是否存在且可讀。
+3. SGPU `cur_freq` 已確認可讀但回傳 0；`available_frequencies` 已確認可讀且有 9 個檔位；`name`、`min_freq`、`max_freq`、`governor` 是否存在且可讀仍待確認。
 4. gpu_busy 的資料語義（即時百分比、累積計數器或其他格式）。
 5. gpu_clock 是否為當次即時頻率，或可能回傳 last-known/cache 值。
 6. GPU 溫度來源與單位。
