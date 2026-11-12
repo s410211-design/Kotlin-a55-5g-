@@ -602,7 +602,11 @@ class MainActivity : Activity() {
         super.onStop()
     }
 
-    private companion object {\n        const val NOTIFICATION_PERMISSION_REQUEST = 5502\n    }\n\n    override fun onDestroy() {
+    private companion object {
+        const val NOTIFICATION_PERMISSION_REQUEST = 5502
+    }
+
+    override fun onDestroy() {
         gpuSampler.close()
         cpuSampler.close()
         shizukuGateway.close()
