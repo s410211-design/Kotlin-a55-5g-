@@ -11,6 +11,7 @@ sealed interface GameModeOutcome {
     data class Applied(
         val packageName: String,
         val originalMode: String,
+        val targetMode: String,
         val downscalePercent: Int
     ) : GameModeOutcome
     data class Restored(val originalMode: String, val externalChange: Boolean) : GameModeOutcome
@@ -100,7 +101,7 @@ class GameModeController(context: Context, private val gateway: ShizukuGateway) 
             return@exclusive GameModeOutcome.Rejected("GameManager 模式讀回驗證失敗；保留還原記錄")
         }
 
-        GameModeOutcome.Applied(packageName, before.first, downscalePercent)
+        GameModeOutcome.Applied(packageName, before.first, targetMode, downscalePercent)
     }
 
     fun restore(): GameModeOutcome = exclusive {
@@ -179,11 +180,10 @@ class GameModeController(context: Context, private val gateway: ShizukuGateway) 
     }
 
     private fun isOwnedAppliedConfig(config: String): Boolean {
+        // Exact string equality prevents a reset from deleting later external
+        // intervention changes that happen to retain the same downscale ratio.
         val expected = preferences.getString(KEY_APPLIED_CONFIG, "").orEmpty()
-        if (expected.isNotBlank() && config == expected) return true
-        val scale = preferences.getString(KEY_DOWNSCALE, null) ?: return false
-        val original = preferences.getString(KEY_ORIGINAL_CONFIG, null) ?: return false
-        return isEmptyInterventionConfig(original) && hasDownscale(config, scale)
+        return expected.isNotBlank() && config == expected
     }
 
     private fun readMode(packageName: String): Pair<String, Set<String>>? {
