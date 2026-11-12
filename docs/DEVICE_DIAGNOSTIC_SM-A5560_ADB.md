@@ -43,7 +43,7 @@ adb shell ls -l /sys/kernel/gpu/ 成功列出目錄內容，證明該目錄存�
 
 | 節點 | 清單中可見 | 實際 cat 結果 |
 |---|---:|---|
-| gpu_busy | 是 | 尚未測試 |
+| gpu_busy | 是 | **成功；兩次均回傳原始值 `0`** |
 | gpu_clock | 是 | 尚未測試 |
 | gpu_freq_table | 是 | 尚未測試 |
 | gpu_tmu | 是 | 尚未測試 |
@@ -52,6 +52,14 @@ adb shell ls -l /sys/kernel/gpu/ 成功列出目錄內容，證明該目錄存�
 | sgpu_pm_monitor | 是 | 尚未測試 |
 | utilization_source | 否 | 本次清單未見 |
 | available_utilization_sources | 否 | 本次清單未見 |
+
+使用者於 2026-11-12 單獨執行兩次 `adb shell cat /sys/kernel/gpu/gpu_busy`，兩次皆成功回傳：
+
+~~~text
+0
+~~~
+
+這證明在本次測試時，一般 ADB Shell UID 2000 可以讀取 `gpu_busy`，且 SELinux Enforcing 未阻止這兩次讀取。兩次原始值皆為 0；測試時遊戲負載/場景未記錄，因此不得直接解讀為遊戲負載期間 GPU 忙碌度為 0%。資料格式、單位與語義仍待負載狀態下連續取樣及交叉驗證。
 
 使用者後續執行 `adb shell ls -lZ /sys/kernel/gpu/` 成功，取得以下監控候選節點權限：
 
@@ -164,6 +172,7 @@ adb shell cat /sys/class/devfreq/10e00000.sgpu/governor
 | 結果 | 判讀 |
 |---|---|
 | 回傳有效內容 | 該次讀取成功；仍需驗證格式、單位與語義 |
+| gpu_busy 兩次回傳 0 | 已證實節點可讀；不能在未記錄 GPU 負載場景及資料格式前當成百分比或遊戲負載結論 |
 | Permission denied | 存取被拒；再區分 Unix 權限與 SELinux 等政策限制 |
 | No such file or directory | 精確路徑不存在，或 symlink 目標不可用；先檢查路徑 |
 | Is a directory | 指定路徑是目錄，不是資料檔 |
