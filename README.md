@@ -19,7 +19,7 @@
 
 本專案不是只做外觀展示的假加速器。任何數值、狀態、功能或效能改善都必須有實際資料或可重現的驗證依據。
 
-**免電腦 ADB 目標與驗收：** 正式使用以 App 自身 UID 與 Android 公開 API 為優先，不依賴電腦、USB ADB 或使用者輸入 shell 指令。最後一次完整唯讀硬體盤點腳本與 ADB-free 驗收門檻見 [docs/ADB_FREE_RUNTIME_PLAN.md](docs/ADB_FREE_RUNTIME_PLAN.md) 及 [tools/A55_Final_ReadOnly_Node_Inventory.bat](tools/A55_Final_ReadOnly_Node_Inventory.bat)。受 SELinux/DAC 保護且普通 App 無權讀取的節點，必須標示不可用；Shizuku 僅是選配的手機端 Shell 通道，不等同完全移除 ADB 機制。
+**免電腦 ADB 目標與驗收：** 正式使用以 App 自身 UID 與 Android 公開 API 為優先，不依賴電腦、USB ADB 或使用者輸入 shell 指令。最後一次完整唯讀硬體盤點腳本與 ADB-free 驗收門檻見 [docs/ADB_FREE_RUNTIME_PLAN.md](docs/ADB_FREE_RUNTIME_PLAN.md) 及 [tools/A55_Final_ReadOnly_Node_Inventory.bat](tools/A55_Final_ReadOnly_Node_Inventory.bat)。正式設計以 Shizuku 作為主要受限系統通道，App 需自動檢查 Binder、授權、UserService 與遠端 UID；仍保留 App 自身 UID 的公開 API 作為基本監控路徑。Shizuku Shell UID 2000 不等於 Root UID 0，不能將授權狀態視為所有 sysfs 節點皆可讀寫。
 
 ## 2. 目標裝置與相容性原則
 
@@ -140,7 +140,8 @@
 
 ## 5. ADB、Shizuku 與權限準則
 
-- Shizuku/ADB shell 權限不等於 Root。
+- 本專案以 Shizuku 作為主要受限系統通道；必須辨識遠端實際 UID 與 SELinux context。
+- Shizuku Shell UID 2000 不等於 Root UID 0；每個節點必須分別驗證讀取/寫入權限。
 - 即使取得 Shizuku 權限，仍可能受 SELinux、檔案權限及核心設定限制。
 - 必須自動檢查 Shizuku 服務狀態、授權狀態、Binder 存活狀態及連線中斷。
 - Binder 死亡、授權撤銷或服務重啟時，必須安全停止受影響工作並提供復原方式。
@@ -159,6 +160,17 @@
 - Binder/Service 失效時，清除失效的遠端參照並停止受影響工作；重綁必須冪等、有逾時及有上限。不可在主執行緒等待 Binder 或 UserService。
 - stdout/stderr 必須限制長度；避免把 dumpsys、視窗標題、套件清單或使用者資料原文寫入 logcat。記錄診斷資訊時只保留必要且已去識別化的摘要。
 - AUTO/強制權限模式必須有明確政策；使用者選擇強制 Shizuku 時，不得在權限失效後默默降級成其他權限層級執行。
+
+### 5.2 Shizuku UserService 實作與效能調校目標
+
+- Shizuku API 與 Provider 由 App 整合；Shizuku 管理器/服務需由使用者另外安裝與啟動，不得宣稱服務已被包進 APK。
+- App 啟動時自動偵測既有 Binder 與已核准授權；尚未授權時，只能在使用者按下授權/連線操作後送出授權請求。
+- UserService 必須回報遠端 UID、PID 與 SELinux context。UID 2000 標示為 Shell，UID 0 標示為 Root；其他 UID 不可推定。
+- 目前已核准的產品目標：在硬體、韌體、權限及安全條件允許的範圍內，提高 CPU/GPU 可用頻率或調整頻率限制，以較高功耗換取遊戲性能。這是調校目標，不是已驗證的性能承諾。
+- CPU 與 GPU 寫入節點必須分開驗證，包含節點存在、資料單位、可接受頻率表、寫入身分、SELinux/DAC 結果及寫入後讀回值。不得因 UID 0 就假設所有節點都可寫。
+- 僅允許在原廠已列出的有效 operating points 或經確認的控制範圍內調整；不得修改電壓、停用 thermal daemon/thermal policy、停用 OPP 安全限制或繞過過溫保護。
+- Boost 必須可一鍵停止與還原；還原前重新讀值，若目前值已被外部程序更改，不得覆寫外部狀態。
+- 檔位需以功耗/性能權衡清楚命名，例如「平衡」「性能」「高性能（高耗電）」；未取得實測功耗與遊戲性能數據前，不得標示具體提升百分比。
 
 ## 6. Boost、停止與還原的操作契約
 
