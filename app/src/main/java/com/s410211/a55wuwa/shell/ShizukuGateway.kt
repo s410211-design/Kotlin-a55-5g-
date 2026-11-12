@@ -529,6 +529,6 @@ class ShizukuGateway(
 
     private companion object {
         const val PERMISSION_REQUEST_CODE = 5501
-        const val USER_SERVICE_VERSION = 4
+        const val USER_SERVICE_VERSION = 5
     }
 }
