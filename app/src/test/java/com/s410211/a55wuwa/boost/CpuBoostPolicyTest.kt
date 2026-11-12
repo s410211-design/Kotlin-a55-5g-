@@ -44,6 +44,20 @@ class CpuBoostPolicyTest {
     }
 
     @Test
+    fun percentageCalculationDoesNotOverflowForLargePositiveLimits() {
+        val result = CpuBoostPolicy.planAtPercent(
+            policy.copy(
+                currentMinKHz = 1L,
+                currentMaxKHz = Long.MAX_VALUE,
+                availableFrequenciesKHz = setOf(1L, Long.MAX_VALUE)
+            ),
+            90
+        )
+        assertTrue(result is CpuBoostPlanResult.Ready)
+        assertEquals(Long.MAX_VALUE, (result as CpuBoostPlanResult.Ready).plan.targetMinKHz)
+    }
+
+    @Test
     fun restoreOnlyWhenCurrentValueStillMatchesOurLastWrite() {
         assertEquals(
             RestoreDecision.RESTORE_ORIGINAL,
