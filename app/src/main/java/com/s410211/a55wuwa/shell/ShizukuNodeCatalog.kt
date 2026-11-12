@@ -1,8 +1,7 @@
 package com.s410211.a55wuwa.shell
 
 /**
- * Stable IDs shared with the AIDL UserService. Only paths discovered or
- * explicitly approved for read-only diagnostics are included here.
+ * Stable IDs shared with the AIDL UserService. Only individually allowlisted paths are included here.
  *
  * Read operations are allowlisted individually. The UserService separately
  * restricts writes to CPUFreq minimum floors and validates live OPP/max values.
