@@ -124,6 +124,6 @@ class GameModeController(context: Context, private val gateway: ShizukuGateway) 
         const val KEY_PRESENT = "journal_present"
         const val KEY_PACKAGE = "package_name"
         const val KEY_ORIGINAL = "original_mode"
-        val SUPPORTED_MODES = setOf("standard", "performance", "battery")
+        val SUPPORTED_MODES = setOf("standard", "performance", "battery", "custom")
     }
 }
