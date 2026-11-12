@@ -193,6 +193,14 @@ drwxr-xr-x 3 root root u:object_r:sysfs_thermal:s0 0 2026-11-08 23:21 /sys/devic
 ls: /sys/devices/virtual/thermal/thermal_zone0/: Permission denied
 ~~~
 
+使用者接著直接執行 `adb shell cat /sys/devices/virtual/thermal/thermal_zone0/type`，系統回傳：
+
+~~~text
+cat: /sys/devices/virtual/thermal/thermal_zone0/type: Permission denied
+~~~
+
+因此，一般 ADB Shell 不只不能列出 `thermal_zone0` 目錄內容，也不能讀取已知路徑下的 `type` 屬性檔。這進一步支持 Thermal Zone 對 shell domain 有存取限制的判斷；但尚未取得 `type` 節點自身的 mode/owner/SELinux label，也沒有 AVC denial，仍不能明確區分 SELinux 與節點自身 DAC 權限。下一步單獨測試 `temp`，不得嘗試更改權限或 SELinux 設定。
+
 這與該目錄 mode `0755`、owner/group `root:root` 的 DAC 權限預期不符：other-read/execute 已開放，但 UID 2000 仍不能讀取目錄內容。由於 SELinux 已確認為 `Enforcing`，目前高度懷疑 `sysfs_thermal` 目錄的 SELinux policy 拒絕 shell domain 的 directory read/open；但尚未取得 AVC denial，故仍不能視為已證實。先前 thermal zone 迴圈使用 `[ -r $d/type ] || continue` 而沒有輸出，與檔案可讀性檢查失敗後全部略過的現象相符，但尚未逐一驗證。
 
 後續改採已知標準節點名稱直接測試，不需要先列目錄：
