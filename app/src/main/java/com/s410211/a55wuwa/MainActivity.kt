@@ -780,7 +780,12 @@ class MainActivity : Activity() {
         }
         return when (val parsed = CpuStatParser.parse(raw, sampledAtMillis)) {
             is Reading.Value -> cpuLoadTracker.update(parsed.value, sampledAtMillis)
-            else -> parsed
+            is Reading.InvalidData -> Reading.InvalidData(
+                parsed.source, parsed.sampledAtMillis, parsed.reason
+            )
+            else -> Reading.Error(
+                "/proc/stat", sampledAtMillis, "Unexpected CPU stat parser state"
+            )
         }
     }
 
