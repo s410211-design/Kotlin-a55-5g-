@@ -42,7 +42,7 @@ object SurfaceFlingerTimeStatsParser {
                 .firstOrNull { it.trimStart().startsWith("layerName") }
                 ?: return@mapNotNull null
             val layerName = layerLine.substringAfter("=").trim()
-            if (!layerName.contains(packageName, ignoreCase = false)) return@mapNotNull null
+            if (!layerNameMatchesPackage(layerName, packageName)) return@mapNotNull null
 
             val frames = framesPattern.find(section)?.groupValues?.getOrNull(1)?.toLongOrNull()
                 ?: return@mapNotNull null
@@ -68,6 +68,11 @@ object SurfaceFlingerTimeStatsParser {
             sampledAtMillis
         )
     }
+
+    private fun layerNameMatchesPackage(layerName: String, packageName: String): Boolean =
+        layerName.contains("$packageName/") ||
+            layerName.contains("$packageName]") ||
+            layerName.endsWith(packageName)
 
     private const val MAX_OUTPUT_CHARS = 262_144
     private const val MIN_VALID_FPS = 1.0
