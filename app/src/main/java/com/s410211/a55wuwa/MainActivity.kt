@@ -71,6 +71,8 @@ class MainActivity : Activity() {
     private lateinit var gameButton: Button
     private lateinit var showHudButton: Button
     private lateinit var hideHudButton: Button
+    private lateinit var fpsButton: Button
+    private lateinit var stopFpsButton: Button
     private lateinit var sessionButton: Button
     private lateinit var boostButton: Button
     private lateinit var restoreButton: Button
@@ -150,6 +152,20 @@ class MainActivity : Activity() {
                 requestSessionAction(PerformanceSessionService.ACTION_BOOST)
             }
         }
+        fpsButton = Button(this).apply {
+            text = "開始遊戲 FPS 監控"
+            isAllCaps = false
+            setOnClickListener {
+                requestSessionAction(PerformanceSessionService.ACTION_START_FPS)
+            }
+        }
+        stopFpsButton = Button(this).apply {
+            text = "停止 FPS 擷取"
+            isAllCaps = false
+            setOnClickListener {
+                requestSessionAction(PerformanceSessionService.ACTION_STOP_FPS)
+            }
+        }
         restoreButton = Button(this).apply {
             text = "停止 Boost／安全還原"
             isAllCaps = false
@@ -192,11 +208,28 @@ class MainActivity : Activity() {
         }
 
         fun launch(packageName: String) {
+            getSharedPreferences(PerformanceSessionService.SNAPSHOT_PREFS, MODE_PRIVATE)
+                .edit().putString("game_package", packageName).apply()
             val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
             if (launchIntent == null) {
                 Toast.makeText(this, "無法取得該遊戲的啟動入口。", Toast.LENGTH_LONG).show()
             } else {
                 runCatching { startActivity(launchIntent) }
+                    .onSuccess {
+                        val sessionActive = getSharedPreferences(
+                            PerformanceSessionService.SNAPSHOT_PREFS,
+                            MODE_PRIVATE
+                        ).getBoolean("service_active", false)
+                        if (sessionActive) {
+                            requestSessionAction(PerformanceSessionService.ACTION_START_FPS)
+                        } else {
+                            Toast.makeText(
+                                this,
+                                "已記錄遊戲套件；請先啟動背景監控，再按「開始遊戲 FPS 監控」。",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
                     .onFailure {
                         Toast.makeText(this, "啟動失敗：${it.javaClass.simpleName}", Toast.LENGTH_LONG).show()
                     }
@@ -224,6 +257,8 @@ class MainActivity : Activity() {
         page.addView(gameButton, marginParams(top = 10))
         page.addView(showHudButton, marginParams(top = 8))
         page.addView(hideHudButton, marginParams(top = 8))
+        page.addView(fpsButton, marginParams(top = 8))
+        page.addView(stopFpsButton, marginParams(top = 8))
         page.addView(card("背景監控／Boost 服務", status))
         page.addView(sessionButton, marginParams(top = 8))
         page.addView(boostButton, marginParams(top = 8))
@@ -464,9 +499,25 @@ class MainActivity : Activity() {
             ) { thermalValueText = it }
         )
 
+        val fpsPreferences = getSharedPreferences(
+            PerformanceSessionService.SNAPSHOT_PREFS,
+            MODE_PRIVATE
+        )
+        val fpsWindow = fpsPreferences.getString("fps_window", null)?.toDoubleOrNull()
+        val fpsCumulative = fpsPreferences.getFloat("fps_cumulative", -1f)
+        val fpsText = buildString {
+            appendLine("狀態：${fpsPreferences.getString("fps_status", "尚未啟動") ?: "尚未啟動"}")
+            if (fpsWindow != null && fpsWindow.isFinite() && fpsWindow > 0.0) {
+                appendLine("最近約 5 秒：${String.format(Locale.US, "%.1f", fpsWindow)} FPS")
+            }
+            if (fpsCumulative > 0f) {
+                appendLine("擷取期間平均：${String.format(Locale.US, "%.1f", fpsCumulative)} FPS")
+            }
+            append("Layer：${fpsPreferences.getString("fps_layer", "尚未辨識") ?: "尚未辨識"}")
+        }
         page.addView(card(
-            "遊戲 FPS",
-            "尚未取得有效的遊戲呈現時間來源。不會用螢幕更新率或本 App 自身畫面更新率冒充鳴潮 FPS。"
+            "遊戲 FPS（SurfaceFlinger timestats）",
+            fpsText
         ))
         page.addView(card(
             "Shizuku 權限與執行身分",
