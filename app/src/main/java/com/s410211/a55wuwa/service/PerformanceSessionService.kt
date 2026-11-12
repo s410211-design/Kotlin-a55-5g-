@@ -11,7 +11,6 @@ import android.os.Build
 import android.os.IBinder
 import android.os.SystemClock
 import com.s410211.a55wuwa.MainActivity
-import com.s410211.a55wuwa.R
 import com.s410211.a55wuwa.boost.CpuBoostController
 import com.s410211.a55wuwa.boost.CpuBoostOutcome
 import com.s410211.a55wuwa.shell.ShizukuGateway
@@ -29,8 +28,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * User-visible owner of monitoring and Boost lifecycle.
  *
- * The service never disables thermal policy. MODERATE or higher thermal status
- * triggers conditional CPU Boost restoration. A persistent journal is also
+ * The service never disables thermal policy. SEVERE or higher thermal status
+ * triggers conditional CPU Boost restoration; MODERATE limits Boost to 70%. A persistent journal is also
  * retained so a later service start can recover interrupted work.
  */
 class PerformanceSessionService : Service() {
@@ -54,7 +53,6 @@ class PerformanceSessionService : Service() {
         }
         boostController = CpuBoostController(applicationContext, gatewayPlaceholder())
         gateway.start()
-        startSampling()
         if (boostController.hasPendingJournal()) {
             sessionText = "偵測到待還原的 CPU Boost 記錄"
         }
@@ -83,6 +81,7 @@ class PerformanceSessionService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         enterForeground()
+        startSampling()
         when (intent?.action ?: ACTION_START) {
             ACTION_START -> {
                 sessionText = "監控服務執行中"
@@ -159,6 +158,7 @@ class PerformanceSessionService : Service() {
     }
 
     private fun sampleOnce() {
+        val previousThermalStatus = lastThermalStatus
         val at = SystemClock.elapsedRealtime()
         val snapshot = getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE).edit()
             .putLong("sampled_at", at)
@@ -188,7 +188,7 @@ class PerformanceSessionService : Service() {
         }
         snapshot.putString("session_status", sessionText).apply()
 
-        if (lastThermalStatus >= 2 && boostController.hasPendingJournal() &&
+        if (lastThermalStatus >= 3 && boostController.hasPendingJournal() &&
             thermalRestoreQueued.compareAndSet(false, true)
         ) {
             operations.execute {
@@ -202,7 +202,7 @@ class PerformanceSessionService : Service() {
                 }
             }
         }
-        updateNotification()
+        if (lastThermalStatus != previousThermalStatus) updateNotification()
     }
 
     private fun awaitUserService(): Boolean {
@@ -220,7 +220,7 @@ class PerformanceSessionService : Service() {
     }
 
     private fun outcomeText(outcome: CpuBoostOutcome): String = when (outcome) {
-        is CpuBoostOutcome.Applied -> "CPU Boost 已寫入並讀回驗證：${outcome.plans.size} 個 policy"
+        is CpuBoostOutcome.Applied -> "CPU Boost 已寫入並讀回驗證：${outcome.plans.size} 個 policy（目標 ${outcome.effectivePercent}%）"
         is CpuBoostOutcome.Restored -> "還原完成：${outcome.restoredPolicies} 個 policy；外部變更未覆寫：${outcome.externalChanges.joinToString().ifBlank { "無" }}"
         is CpuBoostOutcome.Rejected -> "未套用／未還原：" + outcome.reason
         CpuBoostOutcome.NoChange -> "目前沒有需要變更或還原的 CPU Boost"
@@ -263,8 +263,8 @@ class PerformanceSessionService : Service() {
             .setStyle(Notification.BigTextStyle().bigText("$sessionText\n熱狀態：$thermal\nBoost 只調整 CPU 最低頻率限制，不修改最高上限或溫控。"))
             .setContentIntent(launchIntent)
             .setOngoing(true)
-            .addAction(Notification.Action.Builder(null, "還原 Boost", restoreIntent).build())
-            .addAction(Notification.Action.Builder(null, "停止服務", stopIntent).build())
+            .addAction(Notification.Action.Builder(android.R.drawable.ic_menu_revert, "還原 Boost", restoreIntent).build())
+            .addAction(Notification.Action.Builder(android.R.drawable.ic_media_pause, "停止服務", stopIntent).build())
             .build()
     }
 
