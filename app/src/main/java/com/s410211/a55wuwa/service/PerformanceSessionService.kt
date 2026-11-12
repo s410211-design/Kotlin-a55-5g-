@@ -299,12 +299,15 @@ class PerformanceSessionService : Service() {
                     return@scheduleWithFixedDelay
                 }
                 val level = if (lastThermalStatus in 0..1) 3 else 2
-                sPerfStatusText = runCatching {
+                val nextStatus = runCatching {
                     sPerfController.request(level = level, timeoutMs = SPERF_TIMEOUT_MS)
                 }.getOrElse { error ->
                     "請求錯誤：${error.javaClass.simpleName}: ${error.message.orEmpty()}"
                 } + "（level $level）"
-                refreshBoostStatus()
+                if (nextStatus != sPerfStatusText) {
+                    sPerfStatusText = nextStatus
+                    refreshBoostStatus()
+                }
             },
             0L,
             SPERF_RENEW_INTERVAL_MS,
@@ -793,7 +796,7 @@ class PerformanceSessionService : Service() {
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentTitle("鳴潮效能監控")
             .setContentText("$sessionText · Thermal $thermal")
-            .setStyle(Notification.BigTextStyle().bigText("$sessionText\n熱狀態：$thermal\nBoost 優先使用 Android GameManager Performance／Custom Mode 與經讀回驗證的 GPU Backbuffer Downscale；CPU/GPU sysfs 頻率寫入因實機權限拒絕而停用，不提高硬體上限、不改電壓或停用溫控。"))
+            .setStyle(Notification.BigTextStyle().bigText("$sessionText\n熱狀態：$thermal\nCPU_MIN 與 GPU_MIN 透過 Samsung Galaxy Performance SDK 提出短效能請求並定期續約；高溫時停止。GPU Backbuffer Downscale 另由 GameManager 管理。不直接寫入受保護的 sysfs 節點，不改電壓或停用溫控。"))
             .setContentIntent(launchIntent)
             .setOngoing(true)
             .addAction(Notification.Action.Builder(android.R.drawable.ic_menu_revert, "還原 Boost", restoreIntent).build())
