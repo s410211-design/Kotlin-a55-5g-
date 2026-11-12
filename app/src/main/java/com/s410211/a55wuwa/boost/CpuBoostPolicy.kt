@@ -70,7 +70,7 @@ object CpuBoostPolicy {
             return CpuBoostPlanResult.Rejected("目前 policy 限制內沒有可用 OPP")
         }
 
-        val requestedFloor = snapshot.currentMaxKHz * requestedPercent / 100L
+        val requestedFloor = percentageFloor(snapshot.currentMaxKHz, requestedPercent)
         val target = validOpps.firstOrNull { it >= requestedFloor }
             ?: validOpps.last()
 
@@ -128,6 +128,10 @@ object CpuBoostPolicy {
             requestedPercent
         }
     }
+
+    /** Avoid Long overflow when handling untrusted sysfs frequency values. */
+    private fun percentageFloor(value: Long, percent: Int): Long =
+        (value / 100L) * percent + ((value % 100L) * percent) / 100L
 
     const val MIN_PERCENT = 50
     const val MAX_PERCENT = 90
