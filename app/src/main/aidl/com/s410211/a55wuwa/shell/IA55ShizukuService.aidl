@@ -10,4 +10,7 @@ interface IA55ShizukuService {
 
     // Returns [uid, pid, SELinux context].
     String[] getIdentity() = 3;
+
+    // Writes only explicitly allowlisted, policy-validated controls.
+    String[] writeNode(int nodeId, String value) = 4;
 }
