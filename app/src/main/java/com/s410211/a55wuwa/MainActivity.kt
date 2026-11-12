@@ -286,7 +286,7 @@ class MainActivity : Activity() {
         page.addView(card("效能模式狀態（GameManager／CPU／GPU）", status) { sessionStatusValueText = it })
         page.addView(card(
             "Boost 安全限制",
-            "主要加速方式：透過 Shizuku 呼叫 Android GameManager，先查詢鳴潮是否支援 Performance Mode，再套用並讀回驗證；停止時還原原始模式。CPU 最低頻率調整只是輔助，不會提高最高頻率。GPU 節點在 SM-A5560 上需要 Root 權限，一般 Shizuku Shell 不會假裝成功。所有模式仍受 Samsung Power HAL 與原廠溫控限制。"
+            "加速方式：優先嘗試透過 Shizuku 對 SM-A5560 的 CPU policy0/policy4 與 GPU gpu_min_clock 套用安全頻率下限，必須以寫入後讀回成功才顯示已套用；若核心 DAC/SELinux 拒絕，會明確回報權限不足，不會假裝成功或繞過溫控。Android GameManager Performance 是額外輔助，不等於硬體頻率鎖定。停止時條件式還原原值。所有調整仍受 OEM 最高頻率與原廠溫控限制。"
         ))
         page.addView(sessionButton, marginParams(top = 8))
         page.addView(boost70Button, marginParams(top = 8))
