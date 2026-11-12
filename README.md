@@ -76,9 +76,10 @@
 - GPU 目前運作頻率。
 - GPU 支援頻率表（必須與目前頻率分開呈現）。
 - GPU 溫度（僅限可信感測來源）。
-- CPU 負載與頻率。
+- CPU 負載與頻率（CPUFreq policy 節點須標示 policy 與核心回報語義；不得逕稱為精確硬體時鐘）。
 - RAM 使用情況。
 - 電池溫度。
+- Android 公開 Thermal API 可提供整機 thermal status/headroom；逐感測器溫度必須有額外且已核准的資料來源，不可用 headroom 代替攝氏溫度。
 - 網路狀態（資料來源可靠時）。
 - FPS（只有取得真正有效的遊戲影格資料來源時才顯示）。
 
@@ -296,7 +297,7 @@
 
 - **README.md：** 本專案的正式準則、設計原則、開發方法、變更審核制度及最高層級決策依據。
 - **docs/PROJECT_SPEC.md：** 詳細功能規格、資料來源候選、技術注意事項及 AT-01 至 AT-16 驗收清單。
-- **docs/DEVICE_DIAGNOSTIC_SM-A5560_ADB.md：** SM-A5560 第一輪 ADB 實機診斷紀錄，包含已確認的 USB/ADB 狀態、Shell UID、GPU sysfs/devfreq 節點清單、尚待驗證項目及下一輪唯讀診斷命令。
+- **docs/DEVICE_DIAGNOSTIC_SM-A5560_ADB.md：** SM-A5560 ADB 實機診斷紀錄，包含第一輪權限與 GPU 節點探測，以及第二輪 60 秒診斷中目前可見的前 32 筆 GPU/CPU/thermal 證據；未收到的取樣資料不得視為完成。
 - 後續可新增架構決策紀錄（ADR）、測試紀錄及實機診斷文件，但不得與 README 的準則衝突；新增文件或重大規則仍須先經使用者同意。
 
 目前已建立需求與準則文件；Android/Kotlin 應用程式原始碼、實機資料來源驗證及功能測試仍需逐步實作。不得將文件完成描述為 App 已完成。
