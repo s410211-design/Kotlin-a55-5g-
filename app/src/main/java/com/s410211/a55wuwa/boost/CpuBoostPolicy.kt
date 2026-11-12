@@ -110,7 +110,7 @@ object CpuBoostPolicy {
 
     /**
      * Conservative thermal gate. Unknown values fail closed.
-     * NONE and LIGHT may proceed; MODERATE or above must not start/continue Boost.
+     * NONE and LIGHT may use the requested target; MODERATE is derated to 70%; SEVERE+ is rejected.
      */
     fun thermalAllowsBoost(status: Int): Boolean =
         status == THERMAL_STATUS_NONE ||
