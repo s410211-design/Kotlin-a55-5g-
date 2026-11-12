@@ -19,6 +19,8 @@
 
 本專案不是只做外觀展示的假加速器。任何數值、狀態、功能或效能改善都必須有實際資料或可重現的驗證依據。
 
+**免電腦 ADB 目標與驗收：** 正式使用以 App 自身 UID 與 Android 公開 API 為優先，不依賴電腦、USB ADB 或使用者輸入 shell 指令。最後一次完整唯讀硬體盤點腳本與 ADB-free 驗收門檻見 [docs/ADB_FREE_RUNTIME_PLAN.md](docs/ADB_FREE_RUNTIME_PLAN.md) 及 [tools/A55_Final_ReadOnly_Node_Inventory.bat](tools/A55_Final_ReadOnly_Node_Inventory.bat)。受 SELinux/DAC 保護且普通 App 無權讀取的節點，必須標示不可用；Shizuku 僅是選配的手機端 Shell 通道，不等同完全移除 ADB 機制。
+
 ## 2. 目標裝置與相容性原則
 
 主要驗證目標：
