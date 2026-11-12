@@ -113,10 +113,26 @@ object CpuBoostPolicy {
      * NONE and LIGHT may proceed; MODERATE or above must not start/continue Boost.
      */
     fun thermalAllowsBoost(status: Int): Boolean =
-        status == THERMAL_STATUS_NONE || status == THERMAL_STATUS_LIGHT
+        status == THERMAL_STATUS_NONE ||
+            status == THERMAL_STATUS_LIGHT ||
+            status == THERMAL_STATUS_MODERATE
+
+    /** Moderate heat permits only a reduced floor target; unknown/severe fails closed. */
+    fun effectivePercent(requestedPercent: Int, thermalStatus: Int): Int? {
+        if (requestedPercent !in MIN_PERCENT..MAX_PERCENT || !thermalAllowsBoost(thermalStatus)) {
+            return null
+        }
+        return if (thermalStatus == THERMAL_STATUS_MODERATE) {
+            minOf(requestedPercent, MODERATE_MAX_PERCENT)
+        } else {
+            requestedPercent
+        }
+    }
 
     const val MIN_PERCENT = 50
     const val MAX_PERCENT = 90
     const val THERMAL_STATUS_NONE = 0
     const val THERMAL_STATUS_LIGHT = 1
+    const val THERMAL_STATUS_MODERATE = 2
+    const val MODERATE_MAX_PERCENT = 70
 }
