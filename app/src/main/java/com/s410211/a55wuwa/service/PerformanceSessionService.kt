@@ -315,6 +315,7 @@ class PerformanceSessionService : Service() {
         snapshot.putString("network_transport", health.networkTransport ?: "未連線／未知")
         snapshot.putInt("network_validated", when (health.networkValidated) { true -> 1; false -> 0; null -> -1 })
 
+        snapshot.remove("thermal_headroom")
         when (val thermal = ThermalStatusReader.read(this, at)) {
             is Reading.Value -> {
                 lastThermalStatus = thermal.value.status
