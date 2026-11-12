@@ -48,7 +48,6 @@ adb shell ls -l /sys/kernel/gpu/ 成功列出目錄內容，證明該目錄存�
 | SGPU `cur_freq` | SGPU devfreq 項目存在 | **成功；一次回傳原始值 `0`** |
 | SGPU `available_frequencies` | SGPU devfreq 項目存在 | **成功；9 個檔位，與 `gpu_freq_table` 數值集合相同** |
 | `gpu_freq_table` | 是 | **成功；9 個檔位，排序與 devfreq 相反** |
-
 | gpu_tmu | 是 | 尚未測試 |
 | gpu_model | 是 | 尚未測試 |
 | mem_info | 是 | 尚未測試 |
