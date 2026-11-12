@@ -139,7 +139,14 @@ class PerformanceSessionService : Service() {
                     }
                 }
             }
-            ACTION_STOP_FPS -> operations.execute { stopFpsCapture() }
+            ACTION_STOP_FPS -> operations.execute {
+                if (!stopFpsCapture()) {
+                    sessionText = "FPS 停止尚未完成：" +
+                        (getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE)
+                            .getString("fps_status", "Shizuku 未連線") ?: "Shizuku 未連線")
+                    updateNotification()
+                }
+            }
             ACTION_BOOST -> {
                 val percent = intent?.getIntExtra(EXTRA_PERCENT, DEFAULT_PERCENT)
                     ?: DEFAULT_PERCENT
@@ -163,7 +170,16 @@ class PerformanceSessionService : Service() {
                 updateNotification()
             }
             ACTION_STOP -> operations.execute {
-                stopFpsCapture()
+                if ((fpsCaptureRequested || fpsCaptureActive) && !awaitUserService()) {
+                    sessionText = "停止暫緩：FPS 擷取仍需要 Shizuku 送出 disable"
+                    updateNotification()
+                    return@execute
+                }
+                if (!stopFpsCapture()) {
+                    sessionText = "停止暫緩：SurfaceFlinger timestats 尚未確認停用"
+                    updateNotification()
+                    return@execute
+                }
                 if (hasPendingBoostJournal()) {
                     if (!awaitUserService()) {
                         sessionText = "停止暫緩：無法連線 Shizuku，尚有 Boost 還原記錄"
@@ -343,12 +359,16 @@ class PerformanceSessionService : Service() {
         }
     }
 
-    private fun stopFpsCapture() {
+    private fun stopFpsCapture(): Boolean {
+        if (fpsCaptureRequested || fpsCaptureActive) {
+            val stopResult = gateway.stopSurfaceFlingerTimeStats(SystemClock.elapsedRealtime())
+            if (stopResult !is Reading.Value) {
+                setFpsStatus("無法確認 timestats 已停用：" + readingReason(stopResult))
+                return false
+            }
+        }
         fpsTask?.cancel(true)
         fpsTask = null
-        if (fpsCaptureActive) {
-            gateway.stopSurfaceFlingerTimeStats(SystemClock.elapsedRealtime())
-        }
         fpsCaptureActive = false
         fpsCaptureRequested = false
         lastFpsTotalFrames = null
@@ -359,6 +379,7 @@ class PerformanceSessionService : Service() {
             .putString("fps_status", "FPS 擷取已停止")
             .remove("fps_window")
             .apply()
+        return true
     }
 
     private fun setFpsStatus(status: String) {
