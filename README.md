@@ -318,7 +318,7 @@
 
 - Shizuku UserService 型別化唯讀節點、受限 CPU/GPU minimum-floor 寫入白名單，以及 expected-current 防外部覆寫檢查。
 - CPU policy0/policy4 與 GPU `gpu_min_clock` 的 OPP／即時最高限制驗證、寫入後讀回、持久還原記錄及條件式還原。
-- GPU Boost 僅在實際 Root UID 0 時才嘗試；CPU/GPU 都不提高 OEM maximum、不修改電壓、不停用 Thermal policy。MODERATE 熱狀態下目標降至 70%，SEVERE 以上觸發還原。
+- GPU Boost 透過白名單節點在目前 Shizuku 身分下實際嘗試寫入；不以 UID 先行推定權限，最終以核心 DAC/SELinux 寫入結果及讀回驗證為準，拒絕時不提權、不繞過。CPU/GPU 都不提高 OEM maximum、不修改電壓、不停用 Thermal policy。MODERATE 熱狀態下目標降至 70%，SEVERE 以上觸發還原。
 - 前景監控服務、通知操作、懸浮 HUD、遊戲啟動器辨識、電池溫度／網路資訊及 aggregate CPU load。
 - 遊戲 FPS 使用 Shizuku 固定命令讀取 SurfaceFlinger `--timestats`，只解析所選遊戲 package 的 layer；顯示取樣區間 FPS、累積平均 FPS，以及 20/30 FPS 慢影格比例；沒有有效 layer 時顯示不可用，不以螢幕更新率代替遊戲 FPS。
 
