@@ -62,7 +62,7 @@ class ShizukuGateway(
     private val userServiceArgs = Shizuku.UserServiceArgs(
         ComponentName("com.s410211.a55wuwa", A55ShizukuUserService::class.java.name)
     )
-        .tag("com.s410211.a55wuwa.telemetry.v1")
+        .tag("com.s410211.a55wuwa.telemetry.v2")
         .daemon(false)
         .processNameSuffix("shizuku")
         .debuggable(false)
@@ -330,6 +330,62 @@ class ShizukuGateway(
     fun setGameMode(packageName: String, mode: String, sampledAtMillis: Long): Reading<String>? =
         invokeGameMode(packageName, mode, sampledAtMillis)
 
+
+    fun getGameModeConfig(packageName: String, sampledAtMillis: Long): Reading<String>? =
+        invokeGameModeConfig(sampledAtMillis) { it.getGameModeConfig(packageName) }
+
+    fun setGameModeDownscale(
+        packageName: String,
+        mode: String,
+        scale: String,
+        sampledAtMillis: Long
+    ): Reading<String>? = invokeGameModeConfig(sampledAtMillis) {
+        it.setGameModeDownscale(packageName, mode, scale)
+    }
+
+    fun resetGameModeConfig(
+        packageName: String,
+        mode: String,
+        sampledAtMillis: Long
+    ): Reading<String>? = invokeGameModeConfig(sampledAtMillis) {
+        it.resetGameModeConfig(packageName, mode)
+    }
+
+    private fun invokeGameModeConfig(
+        sampledAtMillis: Long,
+        call: (IA55ShizukuService) -> Array<String>
+    ): Reading<String>? {
+        val source = "Android GameManager intervention"
+        val service = remote ?: return Reading.TemporarilyUnavailable(
+            source, sampledAtMillis, "Shizuku UserService 尚未連線"
+        )
+        if (!service.asBinder().pingBinder()) {
+            return Reading.TemporarilyUnavailable(source, sampledAtMillis, "Shizuku UserService Binder 已失效")
+        }
+        return try {
+            val response = call(service)
+            val status = response.getOrNull(0).orEmpty()
+            val raw = response.getOrNull(1).orEmpty()
+            val detail = response.getOrNull(2).orEmpty().take(256)
+            when (status) {
+                "OK" -> Reading.Value(raw, source, "raw", sampledAtMillis)
+                "PERMISSION_DENIED" -> Reading.PermissionDenied(source, sampledAtMillis, detail)
+                "UNSUPPORTED" -> Reading.Unsupported(source, sampledAtMillis, detail.ifBlank { raw })
+                "INVALID_DATA", "OUTPUT_TOO_LARGE", "EXTERNAL_CHANGE" ->
+                    Reading.InvalidData(source, sampledAtMillis, detail.ifBlank { raw })
+                "TEMPORARY" -> Reading.TemporarilyUnavailable(source, sampledAtMillis, detail)
+                else -> Reading.Error(
+                    source, sampledAtMillis,
+                    detail.ifBlank { "GameManager intervention command failed: $status" }
+                )
+            }
+        } catch (error: RemoteException) {
+            Reading.TemporarilyUnavailable(source, sampledAtMillis, "Shizuku IPC 中斷")
+        } catch (error: RuntimeException) {
+            Reading.Error(source, sampledAtMillis, "GameManager intervention 呼叫失敗：" + error.javaClass.simpleName)
+        }
+    }
+
     private fun invokeGameMode(
         packageName: String,
         mode: String?,
@@ -529,6 +585,6 @@ class ShizukuGateway(
 
     private companion object {
         const val PERMISSION_REQUEST_CODE = 5501
-        const val USER_SERVICE_VERSION = 5
+        const val USER_SERVICE_VERSION = 6
     }
 }
