@@ -60,7 +60,7 @@ class CpuBoostPolicyTest {
     }
 
     @Test
-    fun thermalGateFailsClosedAtModerateOrUnknown() {
+    fun thermalGateDeratesModerateAndFailsClosedAtSevereOrUnknown() {
         assertTrue(CpuBoostPolicy.thermalAllowsBoost(0))
         assertTrue(CpuBoostPolicy.thermalAllowsBoost(1))
         assertTrue(CpuBoostPolicy.thermalAllowsBoost(2))
