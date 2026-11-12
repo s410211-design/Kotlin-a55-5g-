@@ -322,7 +322,7 @@ class A55ShizukuUserService : IA55ShizukuService.Stub() {
         status: String,
         rawValue: String = "",
         detail: String = ""
-    ): Array<String> = arrayOf(status, rawValue.take(MAX_NODE_BYTES), detail.take(MAX_DETAIL_CHARS))
+    ): Array<String> = arrayOf(status, rawValue.take(MAX_COMMAND_OUTPUT_BYTES), detail.take(MAX_DETAIL_CHARS))
 
     private companion object {
         const val MAX_NODE_BYTES = 4_096
