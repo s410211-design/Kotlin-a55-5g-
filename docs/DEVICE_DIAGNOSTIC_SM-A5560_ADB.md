@@ -44,7 +44,7 @@ adb shell ls -l /sys/kernel/gpu/ 成功列出目錄內容，證明該目錄存�
 | 節點 | 清單中可見 | 實際 cat 結果 |
 |---|---:|---|
 | gpu_busy | 是 | **成功；兩次均回傳原始值 `0`** |
-| gpu_clock | 是 | 尚未測試 |
+| gpu_clock | 是 | **成功；兩次均回傳原始值 `0`** |
 | gpu_freq_table | 是 | 尚未測試 |
 | gpu_tmu | 是 | 尚未測試 |
 | gpu_model | 是 | 尚未測試 |
@@ -53,13 +53,21 @@ adb shell ls -l /sys/kernel/gpu/ 成功列出目錄內容，證明該目錄存�
 | utilization_source | 否 | 本次清單未見 |
 | available_utilization_sources | 否 | 本次清單未見 |
 
+使用者補充：上述 GPU 讀值測試時手機只是在播放影片，沒有執行遊戲。使用者於 2026-11-12 單獨執行兩次 `adb shell cat /sys/kernel/gpu/gpu_clock`，兩次皆成功回傳：
+
+~~~text
+0
+~~~
+
+這證明本次測試時一般 ADB Shell UID 2000 可以讀取 `gpu_clock`，但回傳原始值為 0。**不得將 0 解讀為 GPU 實際頻率 0 MHz**；該節點的單位、更新機制及是否為有效即時值尚未確認，必須與 SGPU devfreq `cur_freq` 交叉驗證。測試情境是影片播放、未執行遊戲，因此目前只有低/一般使用情境基線，沒有遊戲負載樣本。
+
 使用者於 2026-11-12 單獨執行兩次 `adb shell cat /sys/kernel/gpu/gpu_busy`，兩次皆成功回傳：
 
 ~~~text
 0
 ~~~
 
-這證明在本次測試時，一般 ADB Shell UID 2000 可以讀取 `gpu_busy`，且 SELinux Enforcing 未阻止這兩次讀取。兩次原始值皆為 0；測試時遊戲負載/場景未記錄，因此不得直接解讀為遊戲負載期間 GPU 忙碌度為 0%。資料格式、單位與語義仍待負載狀態下連續取樣及交叉驗證。
+這證明在本次測試時，一般 ADB Shell UID 2000 可以讀取 `gpu_busy`，且 SELinux Enforcing 未阻止這兩次讀取。兩次原始值皆為 0；使用者補充測試時只在播放影片、沒有執行遊戲，因此這是影片播放情境的基線，不是遊戲負載樣本。資料格式、單位與語義仍待負載狀態下連續取樣及交叉驗證。
 
 使用者後續執行 `adb shell ls -lZ /sys/kernel/gpu/` 成功，取得以下監控候選節點權限：
 
@@ -73,7 +81,7 @@ adb shell ls -l /sys/kernel/gpu/ 成功列出目錄內容，證明該目錄存�
 | mem_info | 0444 | root:root | sysfs_gpu | other-read 有開放 |
 | sgpu_pm_monitor | 0444 | root:root | sysfs_gpu | other-read 有開放 |
 
-上述節點完整 SELinux label 均為 `u:object_r:sysfs_gpu:s0`。這代表傳統 Unix DAC 權限沒有阻擋 shell UID 2000 讀取這些節點；但 SELinux 已確認為 Enforcing，仍可能依 domain/type policy 拒絕讀取。**目前不能宣稱這些節點已可讀，必須以逐項 `cat` 的實際結果確認。**
+上述節點完整 SELinux label 均為 `u:object_r:sysfs_gpu:s0`。這代表傳統 Unix DAC 權限沒有阻擋 shell UID 2000 讀取這些節點；但 SELinux 已確認為 Enforcing，仍可能依 domain/type policy 拒絕讀取。**目前已實際讀取成功的節點為 `gpu_busy` 與 `gpu_clock`（各兩次，原始值均為 `0`）；其餘節點仍須以逐項 `cat` 的實際結果確認。讀取成功不代表資料語義/單位已驗證。**
 
 另外，清單中的部分控制節點（例如 `gpu_ifpo_control` mode 0640、`gpu_ifpo_runtime_control` mode 0640）沒有 other-read 權限；一般 shell UID 2000 依 DAC 即不可讀。不得對任何控制節點執行寫入。
 
