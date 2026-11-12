@@ -11,8 +11,8 @@ android {
         applicationId = "com.s410211.a55wuwa"
         minSdk = 34
         targetSdk = 37
-        versionCode = 8
-        versionName = "0.7.3"
+        versionCode = 9
+        versionName = "0.8.0"
     }
 
     buildFeatures {
