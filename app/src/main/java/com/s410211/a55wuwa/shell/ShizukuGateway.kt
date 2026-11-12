@@ -34,7 +34,7 @@ data class ShizukuGatewayState(
             append("執行身分：" + identity)
             if (pid != null) append("／PID " + pid)
             if (!selinuxContext.isNullOrBlank()) appendLine("\nSELinux：" + selinuxContext)
-            append("\\n狀態：" + detail)
+            appendLine("\n狀態：" + detail)
         }
     }
 }
