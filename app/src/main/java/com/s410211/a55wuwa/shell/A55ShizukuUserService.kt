@@ -66,61 +66,69 @@ class A55ShizukuUserService : IA55ShizukuService.Stub() {
      */
     override fun writeNode(nodeId: Int, value: String): Array<String> {
         val control = when (nodeId) {
-            ShizukuNode.CPU_POLICY0_MIN.id -> CpuMinControl(
+            ShizukuNode.CPU_POLICY0_MIN.id -> FrequencyControl(
                 "/sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq",
                 "/sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq",
-                "/sys/devices/system/cpu/cpufreq/policy0/scaling_available_frequencies"
+                "/sys/devices/system/cpu/cpufreq/policy0/scaling_available_frequencies",
+                "CPU policy0"
             )
-            ShizukuNode.CPU_POLICY4_MIN.id -> CpuMinControl(
+            ShizukuNode.CPU_POLICY4_MIN.id -> FrequencyControl(
                 "/sys/devices/system/cpu/cpufreq/policy4/scaling_min_freq",
                 "/sys/devices/system/cpu/cpufreq/policy4/scaling_max_freq",
-                "/sys/devices/system/cpu/cpufreq/policy4/scaling_available_frequencies"
+                "/sys/devices/system/cpu/cpufreq/policy4/scaling_available_frequencies",
+                "CPU policy4"
+            )
+            ShizukuNode.GPU_MIN_CLOCK.id -> FrequencyControl(
+                "/sys/kernel/gpu/gpu_min_clock",
+                "/sys/kernel/gpu/gpu_max_clock",
+                "/sys/kernel/gpu/gpu_freq_table",
+                "GPU"
             )
             else -> return response(STATUS_UNSUPPORTED, detail = "Write target is not allowlisted")
         }
 
         val requested = value.trim().toLongOrNull()
-            ?: return response(STATUS_INVALID_DATA, detail = "Frequency must be an integer in kHz")
+            ?: return response(STATUS_INVALID_DATA, detail = "Frequency must be an integer")
         if (requested <= 0L) {
             return response(STATUS_INVALID_DATA, detail = "Frequency must be positive")
         }
 
         return try {
             val max = readNodeText(control.maxPath).toLongOrNull()
-                ?: return response(STATUS_INVALID_DATA, detail = "Invalid live CPU policy maximum")
+                ?: return response(STATUS_INVALID_DATA, detail = "Invalid live ${control.label} maximum")
             val available = readNodeText(control.availablePath)
                 .split(Regex("\\s+"))
                 .mapNotNull(String::toLongOrNull)
                 .toSet()
 
             if (available.isEmpty()) {
-                return response(STATUS_UNSUPPORTED, detail = "Firmware exposes no valid CPU OPP table")
+                return response(STATUS_UNSUPPORTED, detail = "Firmware exposes no valid ${control.label} OPP table")
             }
             if (requested > max || requested !in available) {
                 return response(
                     STATUS_INVALID_DATA,
-                    detail = "Requested frequency is outside live policy maximum or not a supported OPP"
+                    detail = "Requested ${control.label} frequency exceeds live maximum or is not a supported OPP"
                 )
             }
 
             val fd = Os.open(control.path, OsConstants.O_WRONLY, 0)
             try {
-                val bytes = "$requested\n".toByteArray(Charsets.US_ASCII)
+                val bytes = "$requested\\n".toByteArray(Charsets.US_ASCII)
                 val written = Os.write(fd, bytes, 0, bytes.size)
                 if (written != bytes.size) {
-                    return response(STATUS_ERROR, detail = "Incomplete sysfs write")
+                    return response(STATUS_ERROR, detail = "Incomplete ${control.label} sysfs write")
                 }
             } finally {
                 runCatching { Os.close(fd) }
             }
 
             val readBack = readNodeText(control.path).toLongOrNull()
-                ?: return response(STATUS_INVALID_DATA, detail = "CPU policy read-back is invalid")
+                ?: return response(STATUS_INVALID_DATA, detail = "${control.label} read-back is invalid")
             if (readBack != requested) {
                 response(
                     STATUS_ERROR,
                     rawValue = readBack.toString(),
-                    detail = "CPU policy read-back did not match requested value"
+                    detail = "${control.label} read-back did not match requested value"
                 )
             } else {
                 response(STATUS_OK, rawValue = readBack.toString())
@@ -133,6 +141,13 @@ class A55ShizukuUserService : IA55ShizukuService.Stub() {
             response(STATUS_ERROR, detail = error.javaClass.simpleName)
         }
     }
+
+    private data class FrequencyControl(
+        val path: String,
+        val maxPath: String,
+        val availablePath: String,
+        val label: String
+    )
 
     private fun readNodeText(path: String): String {
         val fd = Os.open(path, OsConstants.O_RDONLY, 0)
@@ -150,12 +165,6 @@ class A55ShizukuUserService : IA55ShizukuService.Stub() {
             Os.close(fd)
         }
     }
-
-    private data class CpuMinControl(
-        val path: String,
-        val maxPath: String,
-        val availablePath: String
-    )
 
     override fun startSurfaceFlingerTimeStats(packageName: String): Array<String> {
         if (!isValidPackageName(packageName)) {
