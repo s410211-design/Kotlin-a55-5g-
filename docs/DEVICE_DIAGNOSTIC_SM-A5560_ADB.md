@@ -199,7 +199,7 @@ ls: /sys/devices/virtual/thermal/thermal_zone0/: Permission denied
 cat: /sys/devices/virtual/thermal/thermal_zone0/type: Permission denied
 ~~~
 
-因此，一般 ADB Shell 不只不能列出 `thermal_zone0` 目錄內容，也不能讀取已知路徑下的 `type` 屬性檔。這進一步支持 Thermal Zone 對 shell domain 有存取限制的判斷；但尚未取得 `type` 節點自身的 mode/owner/SELinux label，也沒有 AVC denial，仍不能明確區分 SELinux 與節點自身 DAC 權限。下一步單獨測試 `temp`，不得嘗試更改權限或 SELinux 設定。
+因此，一般 ADB Shell 不只不能列出 `thermal_zone0` 目錄內容，也不能讀取已知路徑下的 `type` 屬性檔。這進一步支持 Thermal Zone 對 shell domain 有存取限制的判斷；但尚未取得 `type` 節點自身的 mode/owner/SELinux label，也沒有 AVC denial，仍不能明確區分 SELinux 與節點自身 DAC 權限。目前已測試 `thermal_zone0` 的目錄列舉、`type` 讀取均遭拒；下一步測試 `temp`，不得嘗試更改權限或 SELinux 設定。
 
 這與該目錄 mode `0755`、owner/group `root:root` 的 DAC 權限預期不符：other-read/execute 已開放，但 UID 2000 仍不能讀取目錄內容。由於 SELinux 已確認為 `Enforcing`，目前高度懷疑 `sysfs_thermal` 目錄的 SELinux policy 拒絕 shell domain 的 directory read/open；但尚未取得 AVC denial，故仍不能視為已證實。先前 thermal zone 迴圈使用 `[ -r $d/type ] || continue` 而沒有輸出，與檔案可讀性檢查失敗後全部略過的現象相符，但尚未逐一驗證。
 
@@ -210,6 +210,14 @@ adb shell cat /sys/devices/virtual/thermal/thermal_zone0/temp
 ~~~
 兩條命令請分開執行並保存原始結果；即使其中一條被拒絕，也分別記錄。不要嘗試修改權限、SELinux mode 或寫入 thermal 節點。
 
+
+使用者依此單獨執行 `adb shell cat /sys/devices/virtual/thermal/thermal_zone0/temp`，系統回傳：
+
+~~~text
+cat: /sys/devices/virtual/thermal/thermal_zone0/temp: Permission denied
+~~~
+
+判定：一般 ADB Shell UID 2000 對 `thermal_zone0` 的目錄列舉、`type` 與 `temp` 三種讀取操作均遭拒。另一方面，`/sys/kernel/gpu/gpu_tmu` 已實測可讀並回傳原始值 `37.0`。因此目前可行的 GPU 溫度候選來源是 Samsung 自訂 `gpu_tmu`；標準 Thermal Zone 路徑不能由目前 ADB Shell 通道讀取。拒絕來源仍未有 AVC 或目標檔案自身 mode/label 證據，不能定論為 SELinux；此限制僅針對目前 shell 讀取通道，不能推論 App、Shizuku 或其他受授權 domain 的結果相同。
 ## 5. 本輪結論
 
 ### 已確認
