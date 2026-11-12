@@ -12,6 +12,11 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import com.s410211.a55wuwa.shell.ShizukuGateway
+import com.s410211.a55wuwa.shell.ShizukuGatewayState
+import com.s410211.a55wuwa.telemetry.GpuSysfsReader
+import com.s410211.a55wuwa.telemetry.CpuFrequencyParser
+import com.s410211.a55wuwa.telemetry.CpuFrequencyReader
 import com.s410211.a55wuwa.telemetry.GpuNodeCandidate
 import com.s410211.a55wuwa.telemetry.GpuSampleBatch
 import com.s410211.a55wuwa.telemetry.GpuTelemetrySampler
@@ -27,8 +32,24 @@ import java.util.concurrent.Executors
 
 class MainActivity : Activity() {
     private val ioExecutor = Executors.newSingleThreadExecutor()
-    private val gpuSampler = GpuTelemetrySampler(intervalMillis = 1_000L)
-    private val cpuSampler = CpuTelemetrySampler(intervalMillis = 1_000L)
+    private val shizukuGateway by lazy {
+        ShizukuGateway { state -> onShizukuStateChanged(state) }
+    }
+    private val gpuSampler by lazy {
+        GpuTelemetrySampler(
+            intervalMillis = 1_000L,
+            reader = { candidate, at ->
+                shizukuGateway.readNode(candidate.path, at)
+                    ?: GpuSysfsReader.read(candidate, at)
+            }
+        )
+    }
+    private val cpuSampler by lazy {
+        CpuTelemetrySampler(
+            intervalMillis = 1_000L,
+            reader = { policy, at -> readCpuPolicy(policy, at) }
+        )
+    }
     private var activityVisible = false
     private var latestGpuResults: List<Pair<GpuNodeCandidate, Reading<String>>>? = null
     private var latestCpuResults: List<Pair<CpuFrequencyPolicy, Reading<Long>>>? = null
@@ -36,8 +57,10 @@ class MainActivity : Activity() {
     private var gpuValueText: TextView? = null
     private var cpuValueText: TextView? = null
     private var thermalValueText: TextView? = null
+    private var shizukuValueText: TextView? = null
     private lateinit var page: LinearLayout
     private lateinit var refreshButton: Button
+    private lateinit var shizukuButton: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -78,9 +101,61 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.rgb(120, 224, 189))
             setOnClickListener { refreshProfile() }
         }
+        shizukuButton = Button(this).apply {
+            text = "授權／連線 Shizuku"
+            isAllCaps = false
+            setOnClickListener { shizukuGateway.connectOrRequestPermission() }
+        }
         setContentView(scroll)
+        shizukuGateway.start()
         renderLoading()
         refreshProfile()
+    }
+
+    private fun onShizukuStateChanged(state: ShizukuGatewayState) {
+        shizukuValueText?.text = state.displayText()
+        shizukuButton.text = if (state.userServiceConnected) {
+            "重新檢查 Shizuku"
+        } else {
+            "授權／連線 Shizuku"
+        }
+    }
+
+    private fun readCpuPolicy(
+        policy: CpuFrequencyPolicy,
+        sampledAtMillis: Long
+    ): Reading<Long> {
+        val remote = shizukuGateway.readNode(policy.path, sampledAtMillis)
+            ?: return CpuFrequencyReader.read(policy, sampledAtMillis)
+
+        return when (remote) {
+            is Reading.Value -> CpuFrequencyParser.parse(
+                remote.value,
+                policy.path,
+                sampledAtMillis
+            )
+            is Reading.AwaitingSample -> Reading.AwaitingSample(
+                policy.path, sampledAtMillis, remote.reason
+            )
+            is Reading.Unsupported -> Reading.Unsupported(
+                policy.path, sampledAtMillis, remote.reason
+            )
+            is Reading.PermissionDenied -> Reading.PermissionDenied(
+                policy.path, sampledAtMillis, remote.reason
+            )
+            is Reading.NotFound -> Reading.NotFound(
+                policy.path, sampledAtMillis, remote.reason
+            )
+            is Reading.InvalidData -> Reading.InvalidData(
+                policy.path, sampledAtMillis, remote.reason
+            )
+            is Reading.TemporarilyUnavailable -> Reading.TemporarilyUnavailable(
+                policy.path, sampledAtMillis, remote.reason
+            )
+            is Reading.Error -> Reading.Error(
+                policy.path, sampledAtMillis, remote.reason
+            )
+        }
     }
 
     private fun renderLoading() {
@@ -89,7 +164,11 @@ class MainActivity : Activity() {
         page.addView(title("鳴潮效能監控"))
         page.addView(body("先確認裝置基礎資料，再逐步啟用真實 GPU、FPS 與權限監控。"))
         page.addView(card("裝置資訊", "正在讀取 Android 回報的硬體、記憶體與儲存資訊…"))
-        page.addView(refreshButton, marginParams(top = 16))
+        page.addView(card("Shizuku 權限", shizukuGateway.snapshot().displayText()) {
+            shizukuValueText = it
+        })
+        page.addView(shizukuButton, marginParams(top = 10))
+        page.addView(refreshButton, marginParams(top = 10))
     }
 
     private fun refreshProfile() {
@@ -191,9 +270,10 @@ class MainActivity : Activity() {
             "尚未取得有效的遊戲呈現時間來源。不會用螢幕更新率或本 App 自身畫面更新率冒充鳴潮 FPS。"
         ))
         page.addView(card(
-            "Shizuku／ADB",
-            "尚未接入。後續會分別檢查 Binder、授權、UserService 與命令結果；ADB Shell 不等於 Root。"
-        ))
+            "Shizuku 權限與執行身分",
+            shizukuGateway.snapshot().displayText()
+        ) { shizukuValueText = it })
+        page.addView(shizukuButton, marginParams(top = 10))
         page.addView(card(
             "安全最佳化",
             "目前不會寫入 GPU、CPU 或溫控設定。必須先確認裝置支援、原值、讀回驗證與安全還原方式。"
@@ -432,8 +512,9 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
-        gpuSampler.close()
-        cpuSampler.close()
+        if (this::gpuSampler.isInitialized) gpuSampler.close()
+        if (this::cpuSampler.isInitialized) cpuSampler.close()
+        if (this::shizukuGateway.isInitialized) shizukuGateway.close()
         ioExecutor.shutdownNow()
         super.onDestroy()
     }
