@@ -49,11 +49,19 @@ adb shell ls -l /sys/kernel/gpu/ 成功列出目錄內容，證明該目錄存�
 | SGPU `available_frequencies` | SGPU devfreq 項目存在 | **成功；9 個檔位，與 `gpu_freq_table` 數值集合相同** |
 | `gpu_freq_table` | 是 | **成功；9 個檔位，排序與 devfreq 相反** |
 | gpu_tmu | 是 | 尚未測試 |
-| gpu_model | 是 | 尚未測試 |
+| gpu_model | 是 | **成功；回傳 `Samsung Xclipse 530`** |
 | mem_info | 是 | 尚未測試 |
 | sgpu_pm_monitor | 是 | 尚未測試 |
 | utilization_source | 否 | 本次清單未見 |
 | available_utilization_sources | 否 | 本次清單未見 |
+
+使用者於 2026-11-12 執行 `adb shell cat /sys/kernel/gpu/gpu_model`，成功回傳：
+
+~~~text
+Samsung Xclipse 530
+~~~
+
+因此本機 GPU 型號已由實機驅動節點確認為 Samsung Xclipse 530。這是 GPU 型號識別，不代表 GPU 即時負載、時脈或溫度已通過驗證。
 
 使用者於 2026-11-12 在相同影片播放、未執行遊戲的基線測試中，執行 `adb shell cat /sys/class/devfreq/10e00000.sgpu/cur_freq`，成功回傳原始值 `0`。目前觀察到 `gpu_busy`、`gpu_clock`、SGPU `cur_freq` 均可由 ADB Shell 讀取，但值皆為 0。此現象與 GPU 閒置/時鐘閘控相容，但尚未證實；不可將其當成有效 0 MHz 或已驗證的即時 GPU 頻率。
 
@@ -147,6 +155,7 @@ adb shell ls -l /sys/class/devfreq/ 的清單可見以下項目：
 
 ### 尚未確認
 1. Android release、API level、One UI、Build fingerprint、security patch、kernel release。
+2. SoC 型號 / `ro.soc.model` 等系統屬性仍未取得可獨立辨識輸出；GPU 型號已由 `/sys/kernel/gpu/gpu_model` 確認為 Samsung Xclipse 530。
 2. 各 GPU sysfs 節點實際內容，以及 SELinux Enforcing 下是否允許 `cat`。
 3. SGPU `cur_freq` 已確認可讀但回傳 0；`available_frequencies` 與 GPU `gpu_freq_table` 均已確認可讀，且九個原始檔位集合完全相同，單位仍待確認；`name`、`min_freq`、`max_freq`、`governor` 是否存在且可讀仍待確認。
 4. gpu_busy 的資料語義（即時百分比、累積計數器或其他格式）。
