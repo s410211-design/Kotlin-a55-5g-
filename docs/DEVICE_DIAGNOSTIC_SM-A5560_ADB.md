@@ -155,14 +155,14 @@ adb shell ls -l /sys/class/devfreq/ 的清單可見以下項目：
 
 ### 尚未確認
 1. Android release、API level、One UI、Build fingerprint、security patch、kernel release。
-2. SoC 型號 / `ro.soc.model` 等系統屬性仍未取得可獨立辨識輸出；GPU 型號已由 `/sys/kernel/gpu/gpu_model` 確認為 Samsung Xclipse 530。
-2. 各 GPU sysfs 節點實際內容，以及 SELinux Enforcing 下是否允許 `cat`。
-3. SGPU `cur_freq` 已確認可讀但回傳 0；`available_frequencies` 與 GPU `gpu_freq_table` 均已確認可讀，且九個原始檔位集合完全相同，單位仍待確認；`name`、`min_freq`、`max_freq`、`governor` 是否存在且可讀仍待確認。
-4. gpu_busy 的資料語義（即時百分比、累積計數器或其他格式）。
-5. gpu_clock 是否為當次即時頻率，或可能回傳 last-known/cache 值。
-6. GPU 溫度來源與單位。
-7. Shizuku 是否能取得額外且實際可用的讀取能力。
-
+2. SoC 製造商/型號等系統屬性（例如 `ro.soc.model`）仍未取得可獨立辨識輸出；GPU 型號已由實機節點確認為 Samsung Xclipse 530。
+3. `gpu_tmu`、`mem_info`、`sgpu_pm_monitor` 等其餘 GPU 節點尚未實際讀取。
+4. SGPU `name`、`min_freq`、`max_freq`、`governor` 是否存在且可讀仍待確認。
+5. `gpu_busy` 的資料語義（即時百分比、累積計數器或其他格式）仍待驗證。
+6. `gpu_clock` 持續回傳 0 的原因，以及該節點是否為有效即時頻率來源仍待驗證。
+7. 兩份頻率表的數值單位尚未由裝置文件或驅動程式來源確認。
+8. GPU 溫度來源與單位。
+9. Shizuku 是否能取得額外且實際可用的讀取能力。
 ## 6. 下一輪唯讀診斷命令
 
 請在 Windows CMD 逐行執行，避免多個命令輸出混在一起。
