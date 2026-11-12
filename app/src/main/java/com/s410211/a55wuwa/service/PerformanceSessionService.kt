@@ -626,7 +626,7 @@ class PerformanceSessionService : Service() {
     ): String = "加速調整結果：\nCPU：${cpuOutcomeText(cpu)}\nGPU：${gpuOutcomeText(gpu)}"
 
     private fun applyAllBoostsText(game: GameModeOutcome, cpu: CpuBoostOutcome, gpu: GpuBoostOutcome): String =
-        "效能模式結果：\\nGameManager：${gameModeOutcomeText(game)}\\nCPU：${cpuOutcomeText(cpu)}\\nGPU：${gpuOutcomeText(gpu)}"
+        "效能模式結果：\nGameManager：${gameModeOutcomeText(game)}\nCPU：${cpuOutcomeText(cpu)}\nGPU：${gpuOutcomeText(gpu)}"
 
     private fun restoreBothBoostsText(): String {
         val game = gameModeController.restore()
