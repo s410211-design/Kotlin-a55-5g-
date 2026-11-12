@@ -217,7 +217,7 @@ class MainActivity : Activity() {
                 val label = info.loadLabel(packageManager)?.toString().orEmpty()
                 val isGame = label.contains("鳴潮", ignoreCase = true) ||
                     label.contains("Wuthering Waves", ignoreCase = true)
-                if (isGame) info.activityInfo.packageName to label else null
+                if (isGame && info.activityInfo.packageName != packageName) info.activityInfo.packageName to label else null
             }
             .distinctBy { it.first }
             .sortedBy { it.second }
