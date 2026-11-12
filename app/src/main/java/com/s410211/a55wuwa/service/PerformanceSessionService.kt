@@ -22,6 +22,8 @@ import android.os.SystemClock
 import com.s410211.a55wuwa.MainActivity
 import com.s410211.a55wuwa.boost.CpuBoostController
 import com.s410211.a55wuwa.boost.CpuBoostOutcome
+import com.s410211.a55wuwa.boost.GpuBoostController
+import com.s410211.a55wuwa.boost.GpuBoostOutcome
 import com.s410211.a55wuwa.shell.ShizukuGateway
 import com.s410211.a55wuwa.telemetry.GpuNodeCatalog
 import com.s410211.a55wuwa.telemetry.GpuSysfsReader
@@ -45,6 +47,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 class PerformanceSessionService : Service() {
     private lateinit var gateway: ShizukuGateway
     private lateinit var boostController: CpuBoostController
+    private lateinit var gpuBoostController: GpuBoostController
     private lateinit var scheduler: ScheduledExecutorService
     private lateinit var operations: ExecutorService
     private var sampleTask: ScheduledFuture<*>? = null
@@ -70,11 +73,13 @@ class PerformanceSessionService : Service() {
         operations = Executors.newSingleThreadExecutor { task ->
             Thread(task, "a55-session-operations").apply { isDaemon = true }
         }
-        boostController = CpuBoostController(applicationContext, gatewayPlaceholder())
+        val sharedGateway = gatewayPlaceholder()
+        boostController = CpuBoostController(applicationContext, sharedGateway)
+        gpuBoostController = GpuBoostController(applicationContext, sharedGateway)
         fpsCaptureRequested = getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE)
             .getBoolean("fps_capture_requested", false)
         gateway.start()
-        if (boostController.hasPendingJournal()) {
+        if (hasPendingBoostJournal()) {
             sessionText = "偵測到待還原的 CPU Boost 記錄"
         }
     }
@@ -88,10 +93,9 @@ class PerformanceSessionService : Service() {
                 "Shizuku 未連線"
             }
             updateNotification()
-            if (state.userServiceConnected && boostController.hasPendingJournal()) {
+            if (state.userServiceConnected && hasPendingBoostJournal()) {
                 operations.execute {
-                    val result = boostController.restore()
-                    sessionText = outcomeText(result)
+                    sessionText = restoreBothBoostsText()
                     updateNotification()
                 }
             }
@@ -143,30 +147,35 @@ class PerformanceSessionService : Service() {
                     if (!awaitUserService()) {
                         sessionText = "Boost 未執行：Shizuku UserService 未連線"
                     } else {
-                        sessionText = outcomeText(boostController.apply(percent))
+                        val cpuResult = boostController.apply(percent)
+                        val gpuResult = gpuBoostController.apply(percent)
+                        sessionText = applyBothBoostsText(cpuResult, gpuResult)
                     }
                     updateNotification()
                 }
             }
             ACTION_RESTORE -> operations.execute {
-                if (!awaitUserService() && boostController.hasPendingJournal()) {
+                if (!awaitUserService() && hasPendingBoostJournal()) {
                     sessionText = "還原失敗：Shizuku UserService 未連線，請先重新連線"
                 } else {
-                    sessionText = outcomeText(boostController.restore())
+                    sessionText = restoreBothBoostsText()
                 }
                 updateNotification()
             }
             ACTION_STOP -> operations.execute {
                 stopFpsCapture()
-                if (boostController.hasPendingJournal()) {
+                if (hasPendingBoostJournal()) {
                     if (!awaitUserService()) {
                         sessionText = "停止暫緩：無法連線 Shizuku，尚有 Boost 還原記錄"
                         updateNotification()
                         return@execute
                     }
-                    val result = boostController.restore()
-                    if (result is CpuBoostOutcome.Rejected) {
-                        sessionText = "停止暫緩：" + result.reason
+                    val cpuRestore = boostController.restore()
+                    val gpuRestore = gpuBoostController.restore()
+                    if (cpuRestore is CpuBoostOutcome.Rejected ||
+                        gpuRestore is GpuBoostOutcome.Rejected
+                    ) {
+                        sessionText = "停止暫緩：" + restoreBothBoostsText()
                         updateNotification()
                         return@execute
                     }
@@ -246,7 +255,7 @@ class PerformanceSessionService : Service() {
         if (lastThermalStatus < 3) lastThermalRestoreAttemptStatus = -1
         if (lastThermalStatus >= 3 &&
             lastThermalRestoreAttemptStatus != lastThermalStatus &&
-            boostController.hasPendingJournal() &&
+            hasPendingBoostJournal() &&
             thermalRestoreQueued.compareAndSet(false, true)
         ) {
             lastThermalRestoreAttemptStatus = lastThermalStatus
@@ -254,7 +263,7 @@ class PerformanceSessionService : Service() {
                 try {
                     sessionText = "熱狀態升高，正在安全還原 CPU Boost"
                     updateNotification()
-                    sessionText = outcomeText(boostController.restore())
+                    sessionText = restoreBothBoostsText()
                 } finally {
                     thermalRestoreQueued.set(false)
                     updateNotification()
@@ -468,6 +477,56 @@ class PerformanceSessionService : Service() {
             }
         }
         return gateway.snapshot().userServiceConnected
+    }
+
+    private fun hasPendingBoostJournal(): Boolean =
+        boostController.hasPendingJournal() || gpuBoostController.hasPendingJournal()
+
+    private fun applyBothBoostsText(
+        cpu: CpuBoostOutcome,
+        gpu: GpuBoostOutcome
+    ): String = "CPU：${cpuOutcomeText(cpu)}；GPU：${gpuOutcomeText(gpu)}"
+
+    private fun restoreBothBoostsText(): String {
+        val cpu = boostController.restore()
+        val gpu = gpuBoostController.restore()
+        return "CPU：${cpuRestoreText(cpu)}；GPU：${gpuRestoreText(gpu)}"
+    }
+
+    private fun cpuOutcomeText(outcome: CpuBoostOutcome): String = when (outcome) {
+        is CpuBoostOutcome.Applied -> "已套用 ${outcome.effectivePercent}% 並讀回驗證"
+        is CpuBoostOutcome.Restored -> "已還原 ${outcome.restoredPolicies} 個 policy；外部變更未覆寫 ${outcome.externalChanges.joinToString()}"
+        is CpuBoostOutcome.Rejected -> "未套用：" + outcome.reason
+        CpuBoostOutcome.NoChange -> "無需變更"
+    }
+
+    private fun gpuOutcomeText(outcome: GpuBoostOutcome): String = when (outcome) {
+        is GpuBoostOutcome.Applied -> "已套用 ${outcome.effectivePercent}%（raw OPP ${outcome.plan.targetMinRaw}）並讀回驗證"
+        is GpuBoostOutcome.Restored -> when {
+            outcome.externalChange -> "偵測到外部變更，未覆寫"
+            outcome.changed -> "已還原原始 GPU 最低頻率"
+            else -> "無需變更"
+        }
+        is GpuBoostOutcome.Rejected -> "未套用：" + outcome.reason
+        GpuBoostOutcome.NoChange -> "無需變更"
+    }
+
+    private fun cpuRestoreText(outcome: CpuBoostOutcome): String = when (outcome) {
+        is CpuBoostOutcome.Restored -> "還原完成 ${outcome.restoredPolicies} 個 policy；外部變更未覆寫 ${outcome.externalChanges.joinToString()}"
+        is CpuBoostOutcome.Rejected -> "還原失敗：" + outcome.reason
+        is CpuBoostOutcome.Applied -> "異常狀態：回報為已套用"
+        CpuBoostOutcome.NoChange -> "無待還原項目"
+    }
+
+    private fun gpuRestoreText(outcome: GpuBoostOutcome): String = when (outcome) {
+        is GpuBoostOutcome.Restored -> when {
+            outcome.externalChange -> "外部變更未覆寫"
+            outcome.changed -> "已還原"
+            else -> "無待還原項目"
+        }
+        is GpuBoostOutcome.Rejected -> "還原失敗：" + outcome.reason
+        is GpuBoostOutcome.Applied -> "異常狀態：回報為已套用"
+        GpuBoostOutcome.NoChange -> "無待還原項目"
     }
 
     private fun outcomeText(outcome: CpuBoostOutcome): String = when (outcome) {
