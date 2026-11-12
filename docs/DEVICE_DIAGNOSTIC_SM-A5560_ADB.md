@@ -187,6 +187,21 @@ drwxr-xr-x 3 root root u:object_r:sysfs_thermal:s0 0 2026-11-08 23:21 /sys/devic
 
 判讀：目標目錄 owner/group 為 `root:root`、mode `0755`，SELinux label 為 `u:object_r:sysfs_thermal:s0`。以傳統 DAC 權限看，other 具有 read + execute，因此 UID 2000 的 shell 在 DAC 層具備列目錄/搜尋權限；但此前跟隨 `/sys/class/thermal/thermal_zone0` 列出目錄回傳 Permission denied。SELinux enforcing 下的 `sysfs_thermal` policy 是待查的優先方向，但尚無 AVC denial 或目標 children 的實際讀取結果，**不可把根因定論為 SELinux**。下一步對實際路徑執行 `ls -laZ`，再確認 `type` / `temp` 的檔案節點與讀取結果。
 
+使用者依此執行 `adb shell ls -laZ /sys/devices/virtual/thermal/thermal_zone0/`，系統仍回傳：
+
+~~~text
+ls: /sys/devices/virtual/thermal/thermal_zone0/: Permission denied
+~~~
+
+這與該目錄 mode `0755`、owner/group `root:root` 的 DAC 權限預期不符：other-read/execute 已開放，但 UID 2000 仍不能讀取目錄內容。由於 SELinux 已確認為 `Enforcing`，目前高度懷疑 `sysfs_thermal` 目錄的 SELinux policy 拒絕 shell domain 的 directory read/open；但尚未取得 AVC denial，故仍不能視為已證實。先前 thermal zone 迴圈使用 `[ -r $d/type ] || continue` 而沒有輸出，與檔案可讀性檢查失敗後全部略過的現象相符，但尚未逐一驗證。
+
+後續改採已知標準節點名稱直接測試，不需要先列目錄：
+~~~bat
+adb shell cat /sys/devices/virtual/thermal/thermal_zone0/type
+adb shell cat /sys/devices/virtual/thermal/thermal_zone0/temp
+~~~
+兩條命令請分開執行並保存原始結果；即使其中一條被拒絕，也分別記錄。不要嘗試修改權限、SELinux mode 或寫入 thermal 節點。
+
 ## 5. 本輪結論
 
 ### 已確認
