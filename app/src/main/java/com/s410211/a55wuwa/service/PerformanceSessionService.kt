@@ -175,7 +175,8 @@ class PerformanceSessionService : Service() {
                     if (cpuRestore is CpuBoostOutcome.Rejected ||
                         gpuRestore is GpuBoostOutcome.Rejected
                     ) {
-                        sessionText = "停止暫緩：" + restoreBothBoostsText()
+                        sessionText = "停止暫緩：CPU " + cpuRestoreText(cpuRestore) +
+                            "；GPU " + gpuRestoreText(gpuRestore)
                         updateNotification()
                         return@execute
                     }
