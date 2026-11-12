@@ -27,6 +27,7 @@ import com.s410211.a55wuwa.boost.GpuBoostOutcome
 import com.s410211.a55wuwa.boost.GameModeController
 import com.s410211.a55wuwa.boost.GameModeOutcome
 import com.s410211.a55wuwa.shell.ShizukuGateway
+import com.s410211.a55wuwa.perf.SamsungSPerfController
 import com.s410211.a55wuwa.telemetry.GpuNodeCatalog
 import com.s410211.a55wuwa.telemetry.CpuLoadTracker
 import com.s410211.a55wuwa.telemetry.CpuStatParser
@@ -58,6 +59,12 @@ class PerformanceSessionService : Service() {
     private lateinit var scheduler: ScheduledExecutorService
     private lateinit var fpsScheduler: ScheduledExecutorService
     private lateinit var operations: ExecutorService
+    private lateinit var sPerfScheduler: ScheduledExecutorService
+    private lateinit var sPerfController: SamsungSPerfController
+    private var sPerfTask: ScheduledFuture<*>? = null
+    @Volatile private var sPerfBoostRequested = false
+    @Volatile private var sPerfStatusText = "尚未啟動"
+    @Volatile private var gameModeStatusText = "尚未執行"
     private var sampleTask: ScheduledFuture<*>? = null
     private var fpsTask: ScheduledFuture<*>? = null
     @Volatile private var fpsCaptureActive = false
@@ -87,6 +94,10 @@ class PerformanceSessionService : Service() {
         operations = Executors.newSingleThreadExecutor { task ->
             Thread(task, "a55-session-operations").apply { isDaemon = true }
         }
+        sPerfScheduler = Executors.newSingleThreadScheduledExecutor { task ->
+            Thread(task, "a55-samsung-sperf").apply { isDaemon = true }
+        }
+        sPerfController = SamsungSPerfController(applicationContext)
         val sharedGateway = gatewayPlaceholder()
         boostController = CpuBoostController(applicationContext, sharedGateway)
         gpuBoostController = GpuBoostController(applicationContext, sharedGateway)
@@ -179,33 +190,35 @@ class PerformanceSessionService : Service() {
             ACTION_BOOST -> {
                 val percent = intent?.getIntExtra(EXTRA_PERCENT, DEFAULT_PERCENT)
                     ?: DEFAULT_PERCENT
+                startSamsungSPerfBoost()
                 operations.execute {
-                    if (!awaitUserService()) {
-                        sessionText = "加速未啟動：尚未連接 Shizuku 系統服務"
+                    val packageName = getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE)
+                        .getString("game_package", null)
+                    gameModeStatusText = if (!awaitUserService()) {
+                        "Shizuku 未連線，GameManager 略過；Samsung SPerf 仍獨立執行"
                     } else {
-                        val packageName = getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE)
-                            .getString("game_package", null)
                         val gameModeResult = if (packageName.isNullOrBlank()) {
-                            GameModeOutcome.Rejected("尚未選取鳴潮套件；請先按「啟動鳴潮」")
+                            GameModeOutcome.Rejected("尚未選取鳴潮套件")
                         } else {
                             gameModeController.apply(packageName, percent)
                         }
-                        sessionText = "A55 GPU 渲染最佳化：\n" +
-                            gameModeOutcomeText(gameModeResult) +
-                            "\nCPU/GPU 頻率寫入：未執行（先前實機回報 EACCES，避免重複無效寫入）"
+                        gameModeOutcomeText(gameModeResult)
                     }
-                    updateNotification()
+                    refreshBoostStatus()
                 }
             }
             ACTION_RESTORE -> operations.execute {
-                if (!awaitUserService() && hasPendingBoostJournal()) {
-                    sessionText = "還原失敗：Shizuku 系統服務未連線，請先重新連線"
+                stopSamsungSPerfBoost("使用者要求停止／還原")
+                val restoreText = if (!awaitUserService() && hasPendingBoostJournal()) {
+                    "還原受限：Shizuku 系統服務未連線，CPU/GPU SPerf 已停止"
                 } else {
-                    sessionText = restoreBothBoostsText()
+                    restoreBothBoostsText()
                 }
+                sessionText = "Samsung SPerf：$sPerfStatusText\n$restoreText"
                 updateNotification()
             }
             ACTION_STOP -> operations.execute {
+                stopSamsungSPerfBoost("使用者停止服務")
                 if (fpsCaptureRequested || fpsCaptureActive) {
                     fpsStopRequested = true
                     getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE)
@@ -265,6 +278,54 @@ class PerformanceSessionService : Service() {
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
+    }
+
+    /**
+     * Requests Samsung's supported CPU_MIN + GPU_MIN controls.
+     * A short lease is renewed while the user-started game session remains active.
+     * If the process dies, the 3-second SDK timeout expires the request automatically.
+     */
+    private fun startSamsungSPerfBoost() {
+        if (sPerfBoostRequested) return
+        sPerfBoostRequested = true
+        sPerfTask?.cancel(false)
+        sPerfTask = sPerfScheduler.scheduleWithFixedDelay(
+            {
+                if (!sPerfBoostRequested) return@scheduleWithFixedDelay
+                if (lastThermalStatus >= 3) {
+                    stopSamsungSPerfBoost(
+                        "高溫保護：Thermal status $lastThermalStatus，已停止 CPU/GPU SPerf"
+                    )
+                    return@scheduleWithFixedDelay
+                }
+                val level = if (lastThermalStatus in 0..1) 3 else 2
+                sPerfStatusText = runCatching {
+                    sPerfController.request(level = level, timeoutMs = SPERF_TIMEOUT_MS)
+                }.getOrElse { error ->
+                    "請求錯誤：${error.javaClass.simpleName}: ${error.message.orEmpty()}"
+                } + "（level $level）"
+                refreshBoostStatus()
+            },
+            0L,
+            SPERF_RENEW_INTERVAL_MS,
+            TimeUnit.MILLISECONDS
+        )
+    }
+
+    private fun stopSamsungSPerfBoost(reason: String) {
+        sPerfBoostRequested = false
+        sPerfTask?.cancel(false)
+        sPerfTask = null
+        val stopResult = runCatching { sPerfController.stop() }
+            .getOrElse { error ->
+                "stop() 錯誤：${error.javaClass.simpleName}: ${error.message.orEmpty()}"
+            }
+        sPerfStatusText = "$reason；$stopResult"
+    }
+
+    private fun refreshBoostStatus() {
+        sessionText = "Samsung SPerf CPU/GPU：$sPerfStatusText\nGameManager：$gameModeStatusText"
+        updateNotification()
     }
 
     private fun startSampling() {
@@ -345,6 +406,9 @@ class PerformanceSessionService : Service() {
         }
         snapshot.putString("session_status", sessionText).apply()
 
+        if (lastThermalStatus >= 3 && sPerfBoostRequested) {
+            stopSamsungSPerfBoost("高溫保護：Thermal status $lastThermalStatus，已停止 CPU/GPU SPerf")
+        }
         if (lastThermalStatus < 3) lastThermalRestoreAttemptStatus = -1
         if (lastThermalStatus >= 3 &&
             lastThermalRestoreAttemptStatus != lastThermalStatus &&
@@ -758,6 +822,7 @@ class PerformanceSessionService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        stopSamsungSPerfBoost("背景服務結束")
         stopSampling()
         fpsTask?.cancel(true)
         hideHud()
@@ -765,6 +830,7 @@ class PerformanceSessionService : Service() {
             .edit().putBoolean("service_active", false).apply()
         scheduler.shutdownNow()
         fpsScheduler.shutdownNow()
+        sPerfScheduler.shutdownNow()
         gateway.close()
         operations.shutdownNow()
         super.onDestroy()
@@ -786,6 +852,8 @@ class PerformanceSessionService : Service() {
         private const val NOTIFICATION_ID = 5502
         private const val SAMPLE_INTERVAL_MS = 1_000L
         private const val FPS_SAMPLE_INTERVAL_MS = 5_000L
+        private const val SPERF_TIMEOUT_MS = 3_000
+        private const val SPERF_RENEW_INTERVAL_MS = 2_000L
         private const val SHIZUKU_WAIT_ATTEMPTS = 40
         private const val SHIZUKU_WAIT_INTERVAL_MS = 250L
         private val CPU_CURRENT_PATHS = listOf(
