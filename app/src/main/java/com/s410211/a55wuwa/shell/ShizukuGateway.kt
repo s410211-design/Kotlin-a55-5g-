@@ -362,7 +362,7 @@ class ShizukuGateway(
         } catch (error: RemoteException) {
             Reading.TemporarilyUnavailable(source, sampledAtMillis, "Shizuku IPC 中斷")
         } catch (error: RuntimeException) {
-            Reading.Error(source, sampledAtMillis, "GameManager 呼叫失敗：\${error.javaClass.simpleName}")
+            Reading.Error(source, sampledAtMillis, "GameManager 呼叫失敗：" + error.javaClass.simpleName + "")
         }
     }
 
