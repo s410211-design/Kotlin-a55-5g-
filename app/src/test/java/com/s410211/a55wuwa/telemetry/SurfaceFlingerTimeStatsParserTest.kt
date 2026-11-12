@@ -24,7 +24,7 @@ class SurfaceFlingerTimeStatsParserTest {
             1234L
         )
         assertTrue(result is Reading.Value)
-        val value = (result as Reading.Value).value
+        val value = (result as Reading.Value<GameFpsSnapshot>).value
         assertEquals(120L, value.totalFrames)
         assertEquals(59.87, value.cumulativeAverageFps, 0.001)
         assertTrue(value.layerName.contains("com.kurogame.wutheringwaves.global"))
