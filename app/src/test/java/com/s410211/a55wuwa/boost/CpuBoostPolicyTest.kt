@@ -63,7 +63,11 @@ class CpuBoostPolicyTest {
     fun thermalGateFailsClosedAtModerateOrUnknown() {
         assertTrue(CpuBoostPolicy.thermalAllowsBoost(0))
         assertTrue(CpuBoostPolicy.thermalAllowsBoost(1))
-        assertTrue(!CpuBoostPolicy.thermalAllowsBoost(2))
+        assertTrue(CpuBoostPolicy.thermalAllowsBoost(2))
+        assertTrue(!CpuBoostPolicy.thermalAllowsBoost(3))
         assertTrue(!CpuBoostPolicy.thermalAllowsBoost(-1))
+        assertEquals(70, CpuBoostPolicy.effectivePercent(80, 2))
+        assertEquals(80, CpuBoostPolicy.effectivePercent(80, 1))
+        assertEquals(null, CpuBoostPolicy.effectivePercent(80, 3))
     }
 }
