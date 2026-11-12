@@ -187,6 +187,114 @@ class A55ShizukuUserService : IA55ShizukuService.Stub() {
         }
     }
 
+
+    override fun getGameMode(packageName: String): Array<String> {
+        if (!isValidPackageName(packageName)) {
+            return response(STATUS_INVALID_DATA, detail = "Invalid game package name")
+        }
+        return queryGameMode(packageName)
+    }
+
+    override fun setGameMode(packageName: String, mode: String): Array<String> {
+        if (!isValidPackageName(packageName)) {
+            return response(STATUS_INVALID_DATA, detail = "Invalid game package name")
+        }
+        if (mode !in SUPPORTED_GAME_MODES) {
+            return response(STATUS_INVALID_DATA, detail = "Unsupported requested game mode")
+        }
+        val before = queryGameMode(packageName)
+        if (before[0] != STATUS_OK) return before
+        val available = before.getOrNull(2).orEmpty().split(",").filter { it.isNotBlank() }
+        if (mode !in available) {
+            return response(
+                STATUS_UNSUPPORTED,
+                rawValue = before.getOrNull(1).orEmpty(),
+                detail = "GameManager does not advertise $mode mode for this game"
+            )
+        }
+        val changed = runFixedCommand(
+            listOf("/system/bin/cmd", "game", "mode", mode, packageName)
+        )
+        if (changed[0] != STATUS_OK) return changed
+        val after = queryGameMode(packageName)
+        if (after[0] != STATUS_OK) return after
+        if (after.getOrNull(1) != mode) {
+            return response(
+                STATUS_ERROR,
+                rawValue = after.getOrNull(1).orEmpty(),
+                detail = "GameManager mode read-back did not match requested mode"
+            )
+        }
+        return response(
+            STATUS_OK,
+            rawValue = mode,
+            detail = "GameManager mode changed and read back successfully"
+        )
+    }
+
+    private fun queryGameMode(packageName: String): Array<String> {
+        val result = runFixedCommand(
+            listOf("/system/bin/cmd", "game", "list-modes", packageName)
+        )
+        if (result[0] != STATUS_OK) return result
+        val output = result.getOrNull(1).orEmpty()
+        val current = Regex("current mode:\\s*([A-Za-z_-]+)", RegexOption.IGNORE_CASE)
+            .find(output)?.groupValues?.getOrNull(1)?.lowercase()
+            ?: return response(STATUS_UNSUPPORTED, detail = output.take(MAX_DETAIL_CHARS))
+        val availableText = Regex("available game modes:\\s*\\[([^]]*)]", RegexOption.IGNORE_CASE)
+            .find(output)?.groupValues?.getOrNull(1).orEmpty()
+        val available = availableText.split(",")
+            .map { it.trim().lowercase() }
+            .filter { it in SUPPORTED_GAME_MODES }
+            .distinct()
+        if (available.isEmpty()) {
+            return response(STATUS_UNSUPPORTED, rawValue = current, detail = "No supported GameManager modes advertised")
+        }
+        return response(STATUS_OK, rawValue = current, detail = available.joinToString(","))
+    }
+
+    /** Runs only fixed /system/bin/cmd game argument shapes; no shell parsing. */
+    private fun runFixedCommand(arguments: List<String>): Array<String> {
+        val process = try {
+            ProcessBuilder(arguments).redirectErrorStream(true).start()
+        } catch (error: SecurityException) {
+            return response(STATUS_PERMISSION_DENIED, detail = "GameManager command denied")
+        } catch (error: Exception) {
+            return response(STATUS_UNSUPPORTED, detail = "Cannot start GameManager command: \${error.javaClass.simpleName}")
+        }
+        val output = ByteArrayOutputStream()
+        val reader = Thread({
+            runCatching {
+                process.inputStream.use { input ->
+                    val buffer = ByteArray(1024)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count <= 0 || output.size() + count > MAX_DETAIL_CHARS * 4) break
+                        output.write(buffer, 0, count)
+                    }
+                }
+            }
+        }, "a55-game-mode-output").apply { isDaemon = true }
+        reader.start()
+        val completed = try {
+            process.waitFor(5L, TimeUnit.SECONDS)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            false
+        }
+        if (!completed) {
+            runCatching { process.destroyForcibly() }
+            return response(STATUS_TEMPORARY, detail = "GameManager command timed out")
+        }
+        runCatching { reader.join(500L) }
+        val raw = String(output.toByteArray(), Charsets.UTF_8).trim()
+        return if (process.exitValue() == 0) {
+            response(STATUS_OK, rawValue = raw, detail = raw.take(MAX_DETAIL_CHARS))
+        } else {
+            response(STATUS_UNSUPPORTED, detail = raw.ifBlank { "GameManager command returned non-zero" }.take(MAX_DETAIL_CHARS))
+        }
+    }
+
     override fun startSurfaceFlingerTimeStats(packageName: String): Array<String> {
         if (!isValidPackageName(packageName)) {
             return response(STATUS_INVALID_DATA, detail = "Invalid game package name")
@@ -353,5 +461,6 @@ class A55ShizukuUserService : IA55ShizukuService.Stub() {
         const val STATUS_EXTERNAL_CHANGE = "EXTERNAL_CHANGE"
         const val STATUS_INVALID_DATA = "INVALID_DATA"
         const val STATUS_ERROR = "ERROR"
+        val SUPPORTED_GAME_MODES = setOf("standard", "performance", "battery")
     }
 }
