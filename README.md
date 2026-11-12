@@ -314,7 +314,15 @@
 - **docs/DEVICE_DIAGNOSTIC_SM-A5560_ADB.md：** SM-A5560 ADB 實機診斷紀錄，包含第一輪權限與 GPU 節點探測，以及第二輪 60 秒診斷中目前可見的前 32 筆 GPU/CPU/thermal 證據；未收到的取樣資料不得視為完成。
 - 後續可新增架構決策紀錄（ADR）、測試紀錄及實機診斷文件，但不得與 README 的準則衝突；新增文件或重大規則仍須先經使用者同意。
 
-目前已建立需求與準則文件；Android/Kotlin 應用程式原始碼、實機資料來源驗證及功能測試仍需逐步實作。不得將文件完成描述為 App 已完成。
+截至 App 版本 0.6.0，原始碼已加入下列實作（均仍須 CI 與 SM-A5560 實機驗證）：
+
+- Shizuku UserService 型別化唯讀節點、受限 CPU/GPU minimum-floor 寫入白名單，以及 expected-current 防外部覆寫檢查。
+- CPU policy0/policy4 與 GPU `gpu_min_clock` 的 OPP／即時最高限制驗證、寫入後讀回、持久還原記錄及條件式還原。
+- GPU Boost 僅在實際 Root UID 0 時才嘗試；CPU/GPU 都不提高 OEM maximum、不修改電壓、不停用 Thermal policy。MODERATE 熱狀態下目標降至 70%，SEVERE 以上觸發還原。
+- 前景監控服務、通知操作、懸浮 HUD、遊戲啟動器辨識、電池溫度／網路資訊及 aggregate CPU load。
+- 遊戲 FPS 使用 Shizuku 固定命令讀取 SurfaceFlinger `--timestats`，只解析所選遊戲 package 的 layer；沒有有效 layer 時顯示不可用，不以螢幕更新率代替遊戲 FPS。
+
+**尚未驗證的限制：** SM-A5560 的 CPUFreq OPP 清單與 CPU 寫入權限仍待實機確認；GPU `gpu_min_clock` 的寫入受 system:system DAC 與 SELinux 限制，Shell UID 2000 不會被當成 Root；GPU 頻率仍保留 raw 單位；SurfaceFlinger timestats 在該零售韌體上的 shell 權限與輸出格式仍待實測。最新原始碼尚未取得本輪 CI 成功證據，也尚未完成實機安裝與長時間測試。不得將原始碼已加入描述成 App 已驗收完成。
 
 ---
 
