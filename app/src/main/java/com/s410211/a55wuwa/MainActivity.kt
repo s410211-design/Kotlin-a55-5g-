@@ -22,7 +22,6 @@ import android.widget.TextView
 import com.s410211.a55wuwa.shell.ShizukuGateway
 import com.s410211.a55wuwa.shell.ShizukuGatewayState
 import com.s410211.a55wuwa.service.PerformanceSessionService
-import com.s410211.a55wuwa.perf.SamsungSPerfProbe
 import com.s410211.a55wuwa.telemetry.GpuSysfsReader
 import com.s410211.a55wuwa.telemetry.CpuFrequencyParser
 import com.s410211.a55wuwa.telemetry.CpuFrequencyReader
@@ -86,7 +85,6 @@ class MainActivity : Activity() {
     private lateinit var hideHudButton: Button
     private lateinit var fpsButton: Button
     private lateinit var stopFpsButton: Button
-    private lateinit var sPerfTestButton: Button
     private lateinit var sessionButton: Button
     private lateinit var boostButton: Button
     private lateinit var boost70Button: Button
@@ -192,11 +190,6 @@ class MainActivity : Activity() {
                 requestSessionAction(PerformanceSessionService.ACTION_STOP_FPS)
             }
         }
-        sPerfTestButton = Button(this).apply {
-            text = "測試 Samsung CPU／GPU 效能 API（限時）"
-            isAllCaps = false
-            setOnClickListener { runSamsungSPerfProbe() }
-        }
         restoreButton = Button(this).apply {
             text = "停止效能模式／還原原始設定"
             isAllCaps = false
@@ -281,10 +274,9 @@ class MainActivity : Activity() {
         page.addView(hideHudButton, marginParams(top = 8))
         page.addView(fpsButton, marginParams(top = 8))
         page.addView(stopFpsButton, marginParams(top = 8))
-        page.addView(sPerfTestButton, marginParams(top = 8))
         page.addView(card(
-            "Samsung SPerf CPU／GPU API 測試",
-            "手動測試系統內建 /system/framework/perfsdk.jar。每次只送出 level 2、1000 ms 的單次 CPU 或 GPU 最低效能請求，讀取請求前後頻率並呼叫 stop()；不寫入 sysfs、不持續鎖頻。"
+            "Samsung CPU／GPU 效能控制",
+            "啟動鳴潮時自動呼叫系統內建 Samsung Galaxy Performance SDK，同時提出 CPU_MIN 與 GPU_MIN 請求，並在遊戲效能服務存續期間定期續約。高溫時自動停止；按「停止效能模式／還原原始設定」會解除請求。"
         ))
         page.addView(card("A55 渲染最佳化狀態（GameManager／GPU）", status) { sessionStatusValueText = it })
         page.addView(card(
@@ -297,29 +289,6 @@ class MainActivity : Activity() {
         page.addView(boost90Button, marginParams(top = 8))
         page.addView(restoreButton, marginParams(top = 8))
         page.addView(stopSessionButton, marginParams(top = 8))
-    }
-
-    private fun runSamsungSPerfProbe() {
-        if (!::sPerfTestButton.isInitialized || !sPerfTestButton.isEnabled) return
-        sPerfTestButton.isEnabled = false
-        sPerfTestButton.text = "Samsung SPerf 測試中…"
-        ioExecutor.execute {
-            val report = runCatching {
-                SamsungSPerfProbe.run(applicationContext)
-            }.getOrElse { error ->
-                "SPerf 測試發生未處理錯誤：${error.javaClass.simpleName}: ${error.message.orEmpty()}"
-            }
-            runOnUiThread {
-                if (isFinishing || isDestroyed) return@runOnUiThread
-                sPerfTestButton.isEnabled = true
-                sPerfTestButton.text = "測試 Samsung CPU／GPU 效能 API（限時）"
-                AlertDialog.Builder(this)
-                    .setTitle("Samsung SPerf 測試結果")
-                    .setMessage(report)
-                    .setPositiveButton("關閉", null)
-                    .show()
-            }
-        }
     }
 
     private fun requestHudPermissionAndShow() {
