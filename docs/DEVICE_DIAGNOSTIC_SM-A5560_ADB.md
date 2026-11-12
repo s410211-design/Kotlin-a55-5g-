@@ -157,6 +157,12 @@ adb shell "for d in /sys/class/thermal/thermal_zone*; do [ -r $d/type ] || conti
 
 使用者回報終端機沒有任何標準輸出，也沒有顯示錯誤。**此結果不具判定性**：迴圈在 `[ -r $d/type ]` 不成立時會略過該項目；也可能沒有匹配到任何 thermal_zone 目錄。不能因此判定 Thermal Zone 不存在、GPU sensor 不存在或節點權限遭拒。後續先列出 `/sys/class/thermal/` 目錄，再按實際項目逐一探測。
 
+使用者接著執行 `adb shell ls -la /sys/class/thermal/`，成功列出目錄，結果包含：
+- `thermal_zone0` 至 `thermal_zone7`：8 個符號連結，目標位於 `../../devices/virtual/thermal/thermal_zoneN`。
+- `cooling_device0` 至 `cooling_device4`：5 個符號連結，目標位於 `../../devices/virtual/thermal/cooling_deviceN`。
+
+因此已確認 `/sys/class/thermal/` 目錄存在且有 8 個 Thermal Zone 及 5 個 Cooling Device 入口。先前迴圈沒有輸出，原因尚未確定；不能當作 Zone 不存在或資料不可讀的證據。下一步需直接檢查個別 Zone 的符號連結目標、`type` 與 `temp`。
+
 ## 5. 本輪結論
 
 ### 已確認
