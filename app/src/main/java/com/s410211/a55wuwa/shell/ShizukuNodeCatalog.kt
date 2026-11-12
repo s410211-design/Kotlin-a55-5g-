@@ -28,7 +28,8 @@ enum class ShizukuNode(val id: Int, val path: String) {
     CPU_POLICY4_MIN(24, "/sys/devices/system/cpu/cpufreq/policy4/scaling_min_freq"),
     CPU_POLICY4_MAX(25, "/sys/devices/system/cpu/cpufreq/policy4/scaling_max_freq"),
     CPU_POLICY0_AVAILABLE(26, "/sys/devices/system/cpu/cpufreq/policy0/scaling_available_frequencies"),
-    CPU_POLICY4_AVAILABLE(27, "/sys/devices/system/cpu/cpufreq/policy4/scaling_available_frequencies");
+    CPU_POLICY4_AVAILABLE(27, "/sys/devices/system/cpu/cpufreq/policy4/scaling_available_frequencies"),
+    PROC_STAT(28, "/proc/stat");
 
     companion object {
         private val byId = values().associateBy(ShizukuNode::id)
