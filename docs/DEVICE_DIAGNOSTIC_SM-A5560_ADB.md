@@ -364,3 +364,132 @@ Linux CPUFreq 文件定義 `scaling_cur_freq` 單位為 kHz；其多數情況反
 - 公開文件不要保存完整 ADB serial、使用者帳號、私人檔案路徑或不必要的裝置識別資訊。
 - 分享診斷報告前，先檢查並遮蔽 serial、Wi-Fi、帳號及其他個資。
 - 本文件已省略完整 ADB serial。
+## 10. 最終唯讀節點盤點（2026-11-12 18:32；使用者上傳報告）
+
+> 來源：使用者上傳的 A55 FINAL READ-ONLY NODE INVENTORY。ADB serial 與電池記錄中的識別資訊不重複保存。報告完成節點盤點區段，但取樣只取得 8 筆；不得稱為完整 60 秒測試。
+
+### 10.1 裝置、韌體與核心
+
+| 欄位 | 實測 |
+|---|---|
+| Model | SM-A5560 |
+| SoC property / hardware | s5e8845 |
+| Android / API | 17 / 37 |
+| Build display | CP2A.260605.016.A5560ZHUIEZJ1 |
+| Build fingerprint | samsung/a55xzh/a55x:17/CP2A.260605.016/A5560ZHUIEZJ1:user/release-keys |
+| Security patch | 2026-10-05 |
+| Kernel | 6.1.162-android14-11 |
+| SELinux | Enforcing |
+| ADB shell | UID 2000，非 Root |
+
+### 10.2 GPU 根目錄節點盤點
+
+/ sys / kernel / gpu 根目錄（實際路徑 /sys/kernel/gpu/）列出以下節點；已讀取的唯讀資訊結果：
+
+| 節點 | Shell 讀取結果 | 判讀 |
+|---|---|---|
+| gpu_model | Samsung Xclipse 530 | 型號字串已確認 |
+| gpu_busy | 80（盤點快照）；取樣 64–91 | 單一 0–100 範圍原始值；零售核心精確語義/來源仍待確認 |
+| gpu_clock | 960000；取樣中動態變化 | 核心回報頻率候選；單位及硬體即時性待確認 |
+| gpu_freq_table | 9 檔：450000–1300000 | 支援檔位，不是目前頻率 |
+| gpu_governor | conservative | 當前 governor 字串 |
+| gpu_available_governor | static conservative interactive profiler | 可用 governor 字串 |
+| gpu_min_clock / gpu_max_clock | 450000 / 1152000 | vendor 介面限制值；單位與 devfreq 限制的關係仍待確認 |
+| gpu_mm_min_clock | 0 | 原始值；語義未確認 |
+| gpu_siop_max_clock | 2147483647 | 原始值；不可當成實際頻率 |
+| gpu_tmu | 63.0；取樣 64–66 | 原始感測器值；單位及感測器對應未確認，不可標示 °C |
+| mem_info | per-PID 數值及 total | 可讀；格式、單位仍待解析 |
+| ctx_mem_info | 只有 PID SIZE 標頭 | 該次沒有資料列；不能據此判斷沒有 GPU context |
+| sgpu_pm_monitor | Monitor duration: 0us，各狀態 0us | 沒有有效監測時間；不可當成功耗統計 |
+
+根目錄亦列出 gpu_cl_boost_disable、gpu_disable_llc_way、gpu_ifpo_control、gpu_ifpo_runtime_control、sgpu_swap_ctrl 等名稱；本次沒有讀取其控制內容，也沒有任何寫入。proc/ 子目錄存在並列出 9 個子目錄，但未遞迴探查，因此 GPU 整個 sysfs 子樹仍不是完全盤點。
+
+根目錄清單沒有 utilization_source 或 available_utilization_sources。在此 Build 的該目錄快照中，這兩個候選節點未出現；不可在此機 App 中假設它們存在。
+
+### 10.3 Devfreq domains
+
+報告列出 13 個 devfreq domain：
+- GPU：10e00000.sgpu
+- 其他 12 個：17000010.devfreq_mif、17000020.devfreq_int、17000030.devfreq_npu0、17000040.devfreq_dnc、17000050.devfreq_aud、17000060.devfreq_disp、17000070.devfreq_intcam、17000080.devfreq_cam、17000090.devfreq_isp、170000a0.devfreq_mfc、170000b0.devfreq_csis、170000c0.devfreq_icpu。
+
+GPU domain 10e00000.sgpu：
+
+| 屬性 | 結果 |
+|---|---|
+| name | 10e00000.sgpu |
+| governor | sgpu_governor |
+| cur_freq | 960000 |
+| target_freq | 960000 |
+| available_frequencies | 1300000、1152000、1025000、960000、864000、750000、648000、544000、450000 |
+| min_freq / max_freq | 450000 / 1152000 |
+| trans_stat | Permission denied |
+| polling_interval、status、load | 該路徑回報 No such file or directory |
+
+在 8 筆動態樣本中，gpu_clock、devfreq cur_freq 與 target_freq 每筆完全相同，值在 750000、864000、960000 間變動。這比前一份報告的單一不一致快照更有力，但三者可能共用核心/driver 回報路徑，不能視為三個獨立硬體量測來源。Linux devfreq ABI 說明 cur_freq 是目前頻率；若 driver 未實作 get_cur_freq()，它可能與 target_freq 相同。因此仍須確認本機 driver 是否提供真正的 get_cur_freq()，以及 vendor 節點是否有快取語義。參考 [Linux devfreq sysfs ABI](https://github.com/torvalds/linux/blob/master/Documentation/ABI/testing/sysfs-class-devfreq)。
+
+MIF domain 只有 available_frequencies 成功讀到；其餘列出的 name、governor、cur/min/max/target/trans_stat 欄位遭 Permission denied。其餘 11 個非 GPU domains 的主要內容欄位亦遭 Permission denied。這表示 Shell 可見 domain 清單，但一般讀取能力大多受限。
+
+### 10.4 CPUFreq policy 完整對應
+
+| 欄位 | policy0 | policy4 |
+|---|---|---|
+| affected_cpus / related_cpus | 0 1 2 3 | 4 5 6 7 |
+| scaling_driver | exynos_cpufreq | exynos_cpufreq |
+| scaling_governor | energy_aware | energy_aware |
+| 可用 governor | energy_aware / conservative / powersave / performance / schedutil | 同左 |
+| cpuinfo_min_freq | 533000 | 533000 |
+| cpuinfo_max_freq | 2050000 | 2750000 |
+| scaling_min_freq | 1344000 | 1248000 |
+| scaling_max_freq | 2050000 | 2750000 |
+| scaling_cur_freq（盤點時） | 2050000 | 2750000 |
+| cpuinfo_cur_freq | Permission denied | Permission denied |
+| stats/time_in_state | 可讀 | 可讀 |
+
+依 Linux CPUFreq ABI，scaling_cur_freq 和 scaling_available_frequencies 單位為 kHz；scaling_cur_freq 多數情況是 scaling driver 最近要求的 P-state，不一定等於硬體實際時鐘。cpuinfo_cur_freq 才是透過硬體取得的頻率欄位，但本機 shell 讀取遭拒。因此 App 應顯示「CPU policy 核心回報頻率」，並列出核心群組，不得冒稱硬體實際時鐘。參考 [Linux CPUFreq documentation](https://www.kernel.org/doc/html/latest/admin-guide/pm/cpufreq.html)。
+
+### 10.5 Thermal、Cooling 與電池
+
+- /sys/class/thermal/ 有 8 個 thermal_zone 與 5 個 cooling_device 符號連結；本次對各 Zone 的 type/temp/mode/policy/sustainable_power 和各 Cooling Device 的 type/cur_state/max_state 讀取均遭 Permission denied。
+- dumpsys thermalservice 成功，回報 Thermal Status 2（MODERATE）。HAL AIDL 3 connected。Current HAL readings：AP 47.4、BAT 36.3、PA 44.0、SKIN 41.2、SUBBAT 0.0、USB 36.3；沿用 Thermal HAL 輸出單位 °C。SKIN status 為 2。Cooling devices 清單沒有列出裝置。
+- Thermal thresholds：BAT hot thresholds 中可見 55.0、85.0；SKIN 為 38.0、40.0、42.0、45.0、47.0。這些是 HAL 回報 threshold，不是本 App 可修改的目標。
+- /sys/class/power_supply/ 列舉遭 Permission denied；Android dumpsys battery 仍成功回報 level 36%、voltage 3744 mV、temperature 363、technology Li-ion 等資料。BatteryManager 溫度慣例為十分之一攝氏度；此欄位可解讀為 36.3°C。正式 App 應優先使用 Android BatteryManager / ACTION_BATTERY_CHANGED 公開資料，不依賴受限 power_supply sysfs。
+
+### 10.6 RAM 與 GPU memory
+
+- MemTotal=7606432 kB、MemAvailable=2792936 kB。
+- SwapTotal=4194300 kB、SwapFree=1441808 kB；但 /proc/swaps 本身 Permission denied。
+- /proc/meminfo 與 /proc/vmstat 可讀。
+- kernel GpuTotal=820316 kB；mem_info 的 total 原始值為 827379712（盤點快照）及 846295040（後續記憶體讀取）；節點格式/單位尚未由 driver ABI 證實，暫保留原始整數，不混成同一指標。
+
+### 10.7 動態取樣結果與中斷
+
+本次單一 shell 取樣區段只出現 SAMPLE 1–8（18:33:06 至 18:33:15），不是 60 筆：
+
+| 指標 | 範圍 / 統計 |
+|---|---:|
+| gpu_busy | 64–91，平均 79.25 |
+| gpu_clock | 750000–960000 |
+| devfreq cur_freq | 750000–960000 |
+| devfreq target_freq | 750000–960000 |
+| gpu_tmu | 64–66 |
+| CPU policy0 scaling_cur_freq | 1056000–1824000 |
+| CPU policy4 scaling_cur_freq | 2750000（8 筆相同） |
+
+每筆樣本中 gpu_clock = cur_freq = target_freq。這驗證本次取樣條件下三個介面的同步變動，但尚未驗證 gpu_busy 精確語義、GPU 頻率單位/硬體時鐘獨立量測、gpu_tmu 單位。取樣後 Thermal Service 呼叫失敗，回報 adb.exe: no devices/emulators found；結束時間 18:33:15.89。報告沒有證據能判斷是 USB 線、USB 埠、ADB transport 或手機端服務中斷，根因未知。
+
+### 10.8 對 App / ADB-free 的更新判定
+
+**可作為 App 自身公開 API/普通 UID 優先驗證的項目：**
+- CPUFreq policy0/4 原始頻率來源（尚需 App UID 安裝實測；CPUFreq 文件可確定 kHz 單位）。
+- Android Thermal Status / Headroom（不是逐感測器溫度）。
+- BatteryManager 電量、狀態、電壓與溫度。
+- /proc/meminfo 讀取（仍需 App UID 實測與權限確認）。
+
+**仍不可宣稱 ADB-free 普通 App 已可用：**
+- GPU sysfs：Shell 讀取成功不等於 App UID 允許；須直接安裝 APK 實測。
+- GPU 個別溫度：gpu_tmu 單位未知；Thermal Zone 全部被 Shell 拒絕。
+- AP/BAT/PA/SKIN/USB 逐感測器溫度：目前只在 dumpsys thermalservice 取得；Android public PowerManager API 不提供相同逐感測器 °C 清單。
+- 其餘 12 個 devfreq domains：多數屬性對 Shell 已被拒絕。
+- FPS：本報告沒有遊戲 frame presentation timing。
+
+**本報告狀態：** 節點/權限盤點取得大量結果，但 60 筆取樣未完成；GPU proc 子樹未遞迴探查；App UID 實機可讀性尚未驗收。不得把「最終盤點」檔名視為所有準備工作已完成。
