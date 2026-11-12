@@ -3,6 +3,8 @@ package com.s410211.a55wuwa
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -67,6 +69,8 @@ class MainActivity : Activity() {
     private lateinit var refreshButton: Button
     private lateinit var shizukuButton: Button
     private lateinit var gameButton: Button
+    private lateinit var showHudButton: Button
+    private lateinit var hideHudButton: Button
     private lateinit var sessionButton: Button
     private lateinit var boostButton: Button
     private lateinit var restoreButton: Button
@@ -121,6 +125,18 @@ class MainActivity : Activity() {
             text = "啟動鳴潮"
             isAllCaps = false
             setOnClickListener { launchWutheringWaves() }
+        }
+        showHudButton = Button(this).apply {
+            text = "顯示遊戲 HUD"
+            isAllCaps = false
+            setOnClickListener { requestHudPermissionAndShow() }
+        }
+        hideHudButton = Button(this).apply {
+            text = "隱藏遊戲 HUD"
+            isAllCaps = false
+            setOnClickListener {
+                requestSessionAction(PerformanceSessionService.ACTION_HIDE_HUD)
+            }
         }
         sessionButton = Button(this).apply {
             text = "啟動背景監控"
@@ -206,11 +222,37 @@ class MainActivity : Activity() {
             MODE_PRIVATE
         ).getString("session_status", "尚未啟動背景監控") ?: "尚未啟動背景監控"
         page.addView(gameButton, marginParams(top = 10))
+        page.addView(showHudButton, marginParams(top = 8))
+        page.addView(hideHudButton, marginParams(top = 8))
         page.addView(card("背景監控／Boost 服務", status))
         page.addView(sessionButton, marginParams(top = 8))
         page.addView(boostButton, marginParams(top = 8))
         page.addView(restoreButton, marginParams(top = 8))
         page.addView(stopSessionButton, marginParams(top = 8))
+    }
+
+    private fun requestHudPermissionAndShow() {
+        if (!Settings.canDrawOverlays(this)) {
+            val intent = Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:$packageName")
+            )
+            startActivityForResult(intent, OVERLAY_PERMISSION_REQUEST)
+        } else {
+            requestSessionAction(PerformanceSessionService.ACTION_SHOW_HUD)
+        }
+    }
+
+    @Deprecated("Use Activity Result APIs when the project adopts AndroidX Activity")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == OVERLAY_PERMISSION_REQUEST) {
+            if (Settings.canDrawOverlays(this)) {
+                requestSessionAction(PerformanceSessionService.ACTION_SHOW_HUD)
+            } else {
+                Toast.makeText(this, "未授予懸浮視窗權限，HUD 無法顯示。", Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     private fun requestSessionAction(action: String) {
@@ -671,6 +713,7 @@ class MainActivity : Activity() {
 
     private companion object {
         const val NOTIFICATION_PERMISSION_REQUEST = 5502
+        const val OVERLAY_PERMISSION_REQUEST = 5503
     }
 
     override fun onDestroy() {
