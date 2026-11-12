@@ -512,9 +512,9 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
-        if (this::gpuSampler.isInitialized) gpuSampler.close()
-        if (this::cpuSampler.isInitialized) cpuSampler.close()
-        if (this::shizukuGateway.isInitialized) shizukuGateway.close()
+        gpuSampler.close()
+        cpuSampler.close()
+        shizukuGateway.close()
         ioExecutor.shutdownNow()
         super.onDestroy()
     }
