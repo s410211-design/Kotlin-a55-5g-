@@ -162,19 +162,19 @@ class MainActivity : Activity() {
             setOnClickListener { requestSessionAction(PerformanceSessionService.ACTION_START) }
         }
         boostButton = Button(this).apply {
-            text = "鳴潮效能模式（GameManager Performance + CPU 輔助 80%）"
+            text = "A55 GPU 最佳化：渲染比例 85%（建議）"
             isAllCaps = false
-            setOnClickListener { requestBoost(80) }
+            setOnClickListener { requestBoost(85) }
         }
         boost70Button = Button(this).apply {
-            text = "效能模式 + CPU 輔助 70%（保守）"
-            isAllCaps = false
-            setOnClickListener { requestBoost(70) }
-        }
-        boost90Button = Button(this).apply {
-            text = "效能模式 + CPU 輔助 90%（高耗電）"
+            text = "GPU 渲染比例 90%（畫質優先）"
             isAllCaps = false
             setOnClickListener { requestBoost(90) }
+        }
+        boost90Button = Button(this).apply {
+            text = "GPU 渲染比例 80%（效能優先）"
+            isAllCaps = false
+            setOnClickListener { requestBoost(80) }
         }
         fpsButton = Button(this).apply {
             text = "開始遊戲 FPS 監控"
@@ -274,10 +274,10 @@ class MainActivity : Activity() {
         page.addView(hideHudButton, marginParams(top = 8))
         page.addView(fpsButton, marginParams(top = 8))
         page.addView(stopFpsButton, marginParams(top = 8))
-        page.addView(card("效能模式狀態（GameManager／CPU／GPU）", status) { sessionStatusValueText = it })
+        page.addView(card("A55 渲染最佳化狀態（GameManager／GPU）", status) { sessionStatusValueText = it })
         page.addView(card(
-            "Boost 安全限制",
-            "加速方式：優先嘗試透過 Shizuku 對 SM-A5560 的 CPU policy0/policy4 與 GPU gpu_min_clock 套用安全頻率下限，必須以寫入後讀回成功才顯示已套用；若核心 DAC/SELinux 拒絕，會明確回報權限不足，不會假裝成功或繞過溫控。Android GameManager Performance 是額外輔助，不等於硬體頻率鎖定。停止時條件式還原原值。所有調整仍受 OEM 最高頻率與原廠溫控限制。"
+            "渲染設定與安全限制",
+            "目標裝置：SM-A5560／Exynos 1480／Xclipse 530／8GB RAM。預設 85% Backbuffer Downscale；90% 優先保留畫質，80% 加強 GPU 降載。只在 Android GameManager 支援且目前沒有既有介入設定時套用，並以 list-configs 讀回驗證；還原時先比對設定，外部變更不覆蓋。CPU/GPU sysfs 頻率節點先前在此機回報 EACCES，因此停止重複寫入；不修改電壓、不提高硬體上限、不停用原廠溫控。比例設定需重新啟動鳴潮生效。"
         ))
         page.addView(sessionButton, marginParams(top = 8))
         page.addView(boost70Button, marginParams(top = 8))
