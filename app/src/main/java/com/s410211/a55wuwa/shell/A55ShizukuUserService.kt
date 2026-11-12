@@ -287,12 +287,17 @@ class A55ShizukuUserService : IA55ShizukuService.Stub() {
         var includeSection = false
         output.lineSequence().forEach { line ->
             if (line.trimStart().startsWith("layerName")) {
-                includeSection = line.contains(packageName)
+                includeSection = layerLineMatchesPackage(line, packageName)
             }
             if (includeSection) result.appendLine(line)
         }
         return result.toString().take(MAX_COMMAND_OUTPUT_BYTES)
     }
+
+    private fun layerLineMatchesPackage(line: String, packageName: String): Boolean =
+        line.contains("$packageName/") ||
+            line.contains("$packageName]") ||
+            line.trimEnd().endsWith(packageName)
 
     private fun isValidPackageName(value: String): Boolean =
         value.length in 3..255 &&
