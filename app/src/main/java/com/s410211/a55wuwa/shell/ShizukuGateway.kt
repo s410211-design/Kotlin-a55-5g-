@@ -323,6 +323,49 @@ class ShizukuGateway(
         }
     }
 
+
+    fun getGameMode(packageName: String, sampledAtMillis: Long): Reading<String>? =
+        invokeGameMode(packageName, null, sampledAtMillis)
+
+    fun setGameMode(packageName: String, mode: String, sampledAtMillis: Long): Reading<String>? =
+        invokeGameMode(packageName, mode, sampledAtMillis)
+
+    private fun invokeGameMode(
+        packageName: String,
+        mode: String?,
+        sampledAtMillis: Long
+    ): Reading<String>? {
+        val source = "Android GameManager"
+        val service = remote ?: return Reading.TemporarilyUnavailable(
+            source, sampledAtMillis, "Shizuku UserService 尚未連線"
+        )
+        if (!service.asBinder().pingBinder()) {
+            return Reading.TemporarilyUnavailable(source, sampledAtMillis, "Shizuku UserService Binder 已失效")
+        }
+        return try {
+            val response = if (mode == null) service.getGameMode(packageName)
+                else service.setGameMode(packageName, mode)
+            val status = response.getOrNull(0).orEmpty()
+            val raw = response.getOrNull(1).orEmpty()
+            val detail = response.getOrNull(2).orEmpty().take(256)
+            when (status) {
+                "OK" -> Reading.Value(
+                    if (mode == null) raw + "|" + detail else raw,
+                    source, "raw", sampledAtMillis
+                )
+                "PERMISSION_DENIED" -> Reading.PermissionDenied(source, sampledAtMillis, detail)
+                "UNSUPPORTED" -> Reading.Unsupported(source, sampledAtMillis, detail.ifBlank { raw })
+                "INVALID_DATA" -> Reading.InvalidData(source, sampledAtMillis, detail)
+                "TEMPORARY" -> Reading.TemporarilyUnavailable(source, sampledAtMillis, detail)
+                else -> Reading.Error(source, sampledAtMillis, detail.ifBlank { "GameManager command failed: $status" })
+            }
+        } catch (error: RemoteException) {
+            Reading.TemporarilyUnavailable(source, sampledAtMillis, "Shizuku IPC 中斷")
+        } catch (error: RuntimeException) {
+            Reading.Error(source, sampledAtMillis, "GameManager 呼叫失敗：\${error.javaClass.simpleName}")
+        }
+    }
+
     fun startSurfaceFlingerTimeStats(
         packageName: String,
         sampledAtMillis: Long
