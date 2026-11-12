@@ -195,6 +195,18 @@ Safety restrictions:
 6. Implement safe Boost/restore only for verified supported controls.
 7. Run acceptance tests, then validate on SM-A5560 retail firmware.
 
+## SM-A5560 evidence snapshot — 2026-11-12
+
+The second read-only ADB run confirms Android 17/API 37, the build display ID, Exynos 1480 SoC property `s5e8845`, Xclipse 530, and two CPUFreq policy directories (`policy0`, `policy4`). ADB shell can read both policies' `scaling_cur_freq` values.
+
+Only samples 1–32 are visible in the conversation. For those samples, `gpu_busy` ranges from 11 to 73 (mean 49.125), `gpu_clock` remains 450000, and devfreq `cur_freq` is usually 450000 but reaches 544000 once. Devfreq `min_freq` and `max_freq` both report 450000. Units and authoritative current-frequency semantics remain unverified; the app must keep these as separate raw sources and must not infer MHz or a locked clock.
+
+Visible CPUFreq sample ranges are 864000–2050000 for policy0 and 1920000–2750000 for policy4. Linux CPUFreq defines `scaling_cur_freq` in kHz, but in most cases this is the last P-state requested by the scaling driver and may not equal the instantaneous hardware clock. UI wording must therefore say “kernel-reported frequency.” See [Linux CPUFreq documentation](https://www.kernel.org/doc/html/latest/admin-guide/pm/cpufreq.html).
+
+The pre-sampling Thermal Service snapshot reports status 1 (LIGHT), AP 44.9°C, PA 42.1°C, BAT 32.4°C, SKIN 40.7°C, and USB 32.8°C. The public Android `PowerManager` API exposes thermal status and thermal-headroom estimates; it does not expose these per-sensor Celsius readings to an ordinary app. See [PowerManager API](https://developer.android.com/reference/android/os/PowerManager). Per-sensor readings require a separately approved shell/Shizuku transport and are not implemented by the public API reader.
+
+ADB-shell access does not prove that the app's own UID can open the same sysfs files. Direct app access must be verified on the physical phone after installing the build. The 60-sample run is not considered complete until samples 33–60 and the post-sampling thermal snapshot are available.
+
 ## Device validation still required
 The actual SM-A5560 firmware's readable GPU nodes, permission behavior, utilization source, frequency reporting, and thermal sensors must be confirmed on-device. Do not treat candidate paths as confirmed capabilities.
 
