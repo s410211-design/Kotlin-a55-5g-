@@ -372,7 +372,8 @@ class PerformanceSessionService : Service() {
                 SystemClock.elapsedRealtime()
             )
             if (result !is Reading.Value) {
-                setFpsStatus("FPS 啟動失敗：" + readingReason(result))
+                val reason = result?.let(::readingReason) ?: "Shizuku UserService 未連線"
+                setFpsStatus("FPS 啟動失敗：" + reason)
                 return
             }
             fpsCaptureActive = true
@@ -401,7 +402,8 @@ class PerformanceSessionService : Service() {
             val at = SystemClock.elapsedRealtime()
             val raw = gateway.dumpSurfaceFlingerTimeStats(packageName, at)
             if (raw !is Reading.Value) {
-                setFpsStatus("FPS 暫時不可用：" + readingReason(raw))
+                val reason = raw?.let(::readingReason) ?: "Shizuku UserService 未連線"
+                setFpsStatus("FPS 暫時不可用：" + reason)
                 return
             }
             when (val parsed = SurfaceFlingerTimeStatsParser.parse(raw.value, packageName, at)) {
