@@ -28,6 +28,7 @@ import com.s410211.a55wuwa.shell.ShizukuGateway
 import com.s410211.a55wuwa.telemetry.GpuNodeCatalog
 import com.s410211.a55wuwa.telemetry.CpuLoadTracker
 import com.s410211.a55wuwa.telemetry.CpuStatParser
+import com.s410211.a55wuwa.telemetry.DeviceHealthReader
 import com.s410211.a55wuwa.telemetry.GpuSysfsReader
 import com.s410211.a55wuwa.telemetry.Reading
 import com.s410211.a55wuwa.telemetry.SurfaceFlingerTimeStatsParser
@@ -275,6 +276,14 @@ class PerformanceSessionService : Service() {
             snapshot.putString("cpu_load_status", readingReason(procStat))
         }
 
+        val health = DeviceHealthReader.read(this)
+        health.batteryLevelPercent?.let { snapshot.putInt("battery_level", it) }
+        health.batteryTemperatureCelsius?.let { snapshot.putFloat("battery_temp_c", it.toFloat()) }
+        health.batteryVoltageMillivolts?.let { snapshot.putInt("battery_voltage_mv", it) }
+        health.charging?.let { snapshot.putBoolean("battery_charging", it) }
+        health.networkTransport?.let { snapshot.putString("network_transport", it) }
+        health.networkValidated?.let { snapshot.putBoolean("network_validated", it) }
+
         when (val thermal = ThermalStatusReader.read(this, at)) {
             is Reading.Value -> {
                 lastThermalStatus = thermal.value.status
@@ -498,6 +507,8 @@ class PerformanceSessionService : Service() {
             appendLine("GPU clock raw：${rawGpu("/sys/kernel/gpu/gpu_clock")}")
             appendLine("CPU policy0：${cpuMHz(0)}")
             appendLine("CPU policy4：${cpuMHz(1)}")
+            val batteryTemp = prefs.getFloat("battery_temp_c", -1f)
+            appendLine(if (batteryTemp > 0f) String.format(java.util.Locale.US, "電池：%.1f°C", batteryTemp) else "電池溫度：—")
             val cpuLoad = prefs.getFloat("cpu_load_percent", -1f)
             appendLine(if (cpuLoad >= 0f) String.format(java.util.Locale.US, "CPU 使用率：%.1f%%", cpuLoad) else "CPU 使用率：未取得")
             appendLine(fpsText)
