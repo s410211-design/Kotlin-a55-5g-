@@ -265,7 +265,7 @@ class A55ShizukuUserService : IA55ShizukuService.Stub() {
         val changed = runFixedCommand(
             listOf(
                 "/system/bin/cmd", "game", "set",
-                "--mode", "performance",
+                "--mode", "2",
                 "--downscale", scale,
                 packageName
             )
@@ -275,7 +275,7 @@ class A55ShizukuUserService : IA55ShizukuService.Stub() {
         val config = queryGameModeConfig(packageName)
         if (config[0] != STATUS_OK) return config
         val actual = Regex(
-            """downscal(?:e|ing)[^0-9]*([0-9]+(?:\\.[0-9]+)?)""",
+            """downscal(?:e|ing)[^0-9]*([0-9]+(?:\.[0-9]+)?)""",
             RegexOption.IGNORE_CASE
         ).find(config.getOrNull(1).orEmpty())?.groupValues?.getOrNull(1)
         val matches = actual?.toFloatOrNull()?.let {
@@ -300,7 +300,7 @@ class A55ShizukuUserService : IA55ShizukuService.Stub() {
             return response(STATUS_INVALID_DATA, detail = "Only Performance mode config can be reset")
         }
         val reset = runFixedCommand(
-            listOf("/system/bin/cmd", "game", "reset", "--mode", "performance", packageName)
+            listOf("/system/bin/cmd", "game", "reset", "--mode", "2", packageName)
         )
         if (reset[0] != STATUS_OK) return reset
         val after = queryGameModeConfig(packageName)
