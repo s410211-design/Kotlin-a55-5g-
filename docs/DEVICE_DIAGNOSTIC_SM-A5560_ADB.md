@@ -163,6 +163,14 @@ adb shell "for d in /sys/class/thermal/thermal_zone*; do [ -r $d/type ] || conti
 
 因此已確認 `/sys/class/thermal/` 目錄存在且有 8 個 Thermal Zone 及 5 個 Cooling Device 入口。先前迴圈沒有輸出，原因尚未確定；不能當作 Zone 不存在或資料不可讀的證據。下一步需直接檢查個別 Zone 的符號連結目標、`type` 與 `temp`。
 
+使用者接著執行 `adb shell ls -laL /sys/class/thermal/thermal_zone0`，系統回傳：
+
+~~~text
+ls: /sys/class/thermal/thermal_zone0: Permission denied
+~~~
+
+此結果證明一般 ADB Shell 在此次測試中無法跟隨 `thermal_zone0` 符號連結並列出目標目錄。尚未取得目標目錄的 Unix mode / owner / SELinux label，故不能把拒絕原因直接歸因於 SELinux 或 DAC；也不能推論其他 thermal zone 全部不可讀。
+
 ## 5. 本輪結論
 
 ### 已確認
