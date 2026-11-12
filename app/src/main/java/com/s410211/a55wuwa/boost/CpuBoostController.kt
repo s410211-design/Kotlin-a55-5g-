@@ -189,7 +189,7 @@ class CpuBoostController(
             try {
                 val current = readLong(pathFor(plan.policyId))
                 if (current == plan.targetMinKHz) {
-                    val failure = writeVerified(pathFor(plan.policyId), plan.originalMinKHz)
+                    val failure = writeVerified(pathFor(plan.policyId), plan.originalMinKHz, plan.targetMinKHz)
                     if (failure != null) failures += "${plan.policyId}: $failure"
                 } else if (current != plan.originalMinKHz) {
                     failures += "${plan.policyId}: 偵測到外部變更，未覆寫"
