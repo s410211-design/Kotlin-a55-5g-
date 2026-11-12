@@ -604,7 +604,10 @@ class PerformanceSessionService : Service() {
     }
 
     private fun cpuOutcomeText(outcome: CpuBoostOutcome): String = when (outcome) {
-        is CpuBoostOutcome.Applied -> "已套用 ${outcome.effectivePercent}% 並讀回驗證"
+        is CpuBoostOutcome.Applied -> {
+            val targets = outcome.plans.joinToString { "${it.policyId}=${it.targetMinKHz} kHz" }
+            "已套用 ${outcome.effectivePercent}%（$targets），讀回驗證成功"
+        }
         is CpuBoostOutcome.Restored -> "已還原 ${outcome.restoredPolicies} 個 policy；外部變更未覆寫 ${outcome.externalChanges.joinToString()}"
         is CpuBoostOutcome.Rejected -> "未套用：" + outcome.reason
         CpuBoostOutcome.NoChange -> "無需變更"
