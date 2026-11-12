@@ -461,6 +461,6 @@ class A55ShizukuUserService : IA55ShizukuService.Stub() {
         const val STATUS_EXTERNAL_CHANGE = "EXTERNAL_CHANGE"
         const val STATUS_INVALID_DATA = "INVALID_DATA"
         const val STATUS_ERROR = "ERROR"
-        val SUPPORTED_GAME_MODES = setOf("standard", "performance", "battery")
+        val SUPPORTED_GAME_MODES = setOf("standard", "performance", "battery", "custom")
     }
 }
