@@ -158,7 +158,7 @@ class MainActivity : Activity() {
             setOnClickListener { requestSessionAction(PerformanceSessionService.ACTION_START) }
         }
         boostButton = Button(this).apply {
-            text = "啟動 CPU Boost（80% policy 上限目標）"
+            text = "啟動 CPU＋GPU Boost（目標80%，中度熱降至70%）"
             isAllCaps = false
             setOnClickListener {
                 requestSessionAction(PerformanceSessionService.ACTION_BOOST)
@@ -272,6 +272,10 @@ class MainActivity : Activity() {
         page.addView(fpsButton, marginParams(top = 8))
         page.addView(stopFpsButton, marginParams(top = 8))
         page.addView(card("背景監控／Boost 服務", status) { sessionStatusValueText = it })
+        page.addView(card(
+            "Boost 安全限制",
+            "只調整 CPU/GPU 最低頻率 floor，不提高原廠最高上限、不改電壓、不停用溫控。GPU 節點屬 system:system，只有實際 Root UID 0 且 SELinux 允許時才會嘗試；Shell UID 2000 會拒絕 GPU 寫入。"
+        ))
         page.addView(sessionButton, marginParams(top = 8))
         page.addView(boostButton, marginParams(top = 8))
         page.addView(restoreButton, marginParams(top = 8))
