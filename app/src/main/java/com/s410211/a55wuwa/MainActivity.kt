@@ -744,9 +744,8 @@ class MainActivity : Activity() {
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density).toInt()
 
-    override fun onStart() {
-        super.onStart()
-        activityVisible = true
+    private fun startLocalSamplers() {
+        if (!activityVisible || isFinishing || isDestroyed) return
         gpuSampler.start { batch: GpuSampleBatch ->
             runOnUiThread {
                 if (!activityVisible || isFinishing || isDestroyed) return@runOnUiThread
@@ -766,10 +765,80 @@ class MainActivity : Activity() {
         }
     }
 
-    override fun onStop() {
-        activityVisible = false
+    private fun stopLocalSamplers() {
         gpuSampler.stop()
         cpuSampler.stop()
+    }
+
+    private val sessionSnapshotPoll = object : Runnable {
+        override fun run() {
+            if (!activityVisible || isFinishing || isDestroyed) return
+            val prefs = getSharedPreferences(PerformanceSessionService.SNAPSHOT_PREFS, MODE_PRIVATE)
+            if (!prefs.getBoolean("service_active", false)) {
+                servicePollMisses++
+                if (servicePollMisses >= 2) {
+                    sessionHandler.removeCallbacks(this)
+                    startLocalSamplers()
+                    return
+                }
+            } else {
+                servicePollMisses = 0
+                sessionStatusValueText?.text =
+                    prefs.getString("session_status", "背景服務執行中") ?: "背景服務執行中"
+                val at = prefs.getLong("sampled_at", 0L)
+                val busy = prefs.getString(
+                    "gpu_" + "/sys/kernel/gpu/gpu_busy".hashCode(), null
+                ) ?: "—"
+                val clock = prefs.getString(
+                    "gpu_" + "/sys/kernel/gpu/gpu_clock".hashCode(), null
+                ) ?: "—"
+                gpuValueText?.text = "GPU busy raw：$busy\nGPU clock raw：$clock\n取樣：$at ms"
+                fun cpuText(index: Int): String {
+                    val khz = prefs.getString("cpu_policy_$index", null)?.toLongOrNull()
+                        ?: return "—"
+                    return String.format(Locale.US, "%.1f MHz", khz / 1_000.0)
+                }
+                cpuValueText?.text =
+                    "policy0 核心回報：${cpuText(0)}\npolicy4 核心回報：${cpuText(1)}"
+                val thermalStatus = prefs.getInt("thermal_status", -1)
+                thermalValueText?.text =
+                    "整機 Thermal 狀態：${ThermalStatusReader.statusLabel(thermalStatus)}"
+                val fpsWindow = prefs.getString("fps_window", null)?.toDoubleOrNull()
+                val fpsAverage = prefs.getFloat("fps_cumulative", -1f)
+                fpsValueText?.text = buildString {
+                    appendLine("狀態：${prefs.getString("fps_status", "尚未啟動") ?: "尚未啟動"}")
+                    if (fpsWindow != null && fpsWindow.isFinite() && fpsWindow > 0.0) {
+                        appendLine("最近約 5 秒：${String.format(Locale.US, "%.1f", fpsWindow)} FPS")
+                    }
+                    if (fpsAverage > 0f) {
+                        appendLine("擷取期間平均：${String.format(Locale.US, "%.1f", fpsAverage)} FPS")
+                    }
+                    append("Layer：${prefs.getString("fps_layer", "尚未辨識") ?: "尚未辨識"}")
+                }
+            }
+            sessionHandler.postDelayed(this, 1_000L)
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        activityVisible = true
+        val serviceActive = getSharedPreferences(
+            PerformanceSessionService.SNAPSHOT_PREFS,
+            MODE_PRIVATE
+        ).getBoolean("service_active", false)
+        if (serviceActive) {
+            sessionHandler.removeCallbacks(sessionSnapshotPoll)
+            sessionHandler.post(sessionSnapshotPoll)
+        } else {
+            startLocalSamplers()
+        }
+    }
+
+    override fun onStop() {
+        activityVisible = false
+        sessionHandler.removeCallbacks(sessionSnapshotPoll)
+        stopLocalSamplers()
         super.onStop()
     }
 
@@ -779,6 +848,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        sessionHandler.removeCallbacks(sessionSnapshotPoll)
         gpuSampler.close()
         cpuSampler.close()
         shizukuGateway.close()
