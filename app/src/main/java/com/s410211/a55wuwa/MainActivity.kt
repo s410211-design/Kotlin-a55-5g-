@@ -162,17 +162,17 @@ class MainActivity : Activity() {
             setOnClickListener { requestSessionAction(PerformanceSessionService.ACTION_START) }
         }
         boostButton = Button(this).apply {
-            text = "啟動 CPU＋GPU Boost（目標80%，中度熱降至70%）"
+            text = "啟動 CPU＋GPU 效能加速（目標 80%；中度熱狀態自動降至 70%）"
             isAllCaps = false
             setOnClickListener { requestBoost(80) }
         }
         boost70Button = Button(this).apply {
-            text = "Boost 70%（保守）"
+            text = "效能加速 70%（保守）"
             isAllCaps = false
             setOnClickListener { requestBoost(70) }
         }
         boost90Button = Button(this).apply {
-            text = "Boost 90%（高性能／高耗電）"
+            text = "效能加速 90%（高效能／高耗電）"
             isAllCaps = false
             setOnClickListener { requestBoost(90) }
         }
@@ -191,7 +191,7 @@ class MainActivity : Activity() {
             }
         }
         restoreButton = Button(this).apply {
-            text = "停止 Boost／安全還原"
+            text = "停止加速／安全還原頻率"
             isAllCaps = false
             setOnClickListener {
                 requestSessionAction(PerformanceSessionService.ACTION_RESTORE)
@@ -283,10 +283,10 @@ class MainActivity : Activity() {
         page.addView(hideHudButton, marginParams(top = 8))
         page.addView(fpsButton, marginParams(top = 8))
         page.addView(stopFpsButton, marginParams(top = 8))
-        page.addView(card("背景監控／Boost 服務", status) { sessionStatusValueText = it })
+        page.addView(card("效能加速狀態（CPU／GPU）", status) { sessionStatusValueText = it })
         page.addView(card(
             "Boost 安全限制",
-            "只調整 CPU/GPU 最低頻率 floor，不提高原廠最高上限、不改電壓、不停用溫控。GPU 節點屬 system:system，只有實際 Root UID 0 且 SELinux 允許時才會嘗試；Shell UID 2000 會拒絕 GPU 寫入。"
+            "只調整 CPU／GPU 最低頻率，不提高原廠最高頻率、不修改電壓、不關閉溫度保護。GPU 節點需要真正的 Root（系統管理員）權限，而且仍須通過 SELinux 安全檢查；一般 Shizuku Shell 權限無法寫入 GPU。"
         ))
         page.addView(sessionButton, marginParams(top = 8))
         page.addView(boost70Button, marginParams(top = 8))
