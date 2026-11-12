@@ -706,9 +706,9 @@ class PerformanceSessionService : Service() {
         hideHud()
         getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE)
             .edit().putBoolean("service_active", false).apply()
-        gateway.close()
         scheduler.shutdownNow()
         fpsScheduler.shutdownNow()
+        gateway.close()
         operations.shutdownNow()
         super.onDestroy()
     }
