@@ -31,7 +31,7 @@ class ShizukuNodeCatalogTest {
     }
 
     @Test
-    fun catalogContainsObservedCpuGpuAndProcTelemetryOnly() {
+    fun catalogContainsOnlyObservedSysfsAndProcPaths() {
         ShizukuNode.values().forEach { node ->
             assertTrue(node.path.startsWith("/sys/") || node == ShizukuNode.PROC_STAT)
             assertTrue(node.path.none { it == ';' || it == '|' || it == '\n' || it == '\r' })
