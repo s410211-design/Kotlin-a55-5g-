@@ -207,7 +207,7 @@ class A55ShizukuUserService : IA55ShizukuService.Stub() {
         val available = before.getOrNull(2).orEmpty().split(",").filter { it.isNotBlank() }
         // AOSP exposes CUSTOM as a shell-selectable intervention mode even when
         // the game does not advertise Performance mode in list-modes.
-        if (mode != "custom" && mode !in available) {
+        if (mode !in setOf("standard", "custom") && mode !in available) {
             return response(
                 STATUS_UNSUPPORTED,
                 rawValue = before.getOrNull(1).orEmpty(),
