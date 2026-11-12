@@ -73,11 +73,11 @@ class GpuBoostController(
         if (!saveJournal(plan)) {
             return@exclusive GpuBoostOutcome.Rejected("無法保存 GPU 還原記錄")
         }
-        val failure = writeVerified(GPU_MIN_PATH, plan.targetMinRaw)
+        val failure = writeVerified(GPU_MIN_PATH, plan.targetMinRaw, plan.originalMinRaw)
         if (failure != null) {
             val current = runCatching { readLong(GPU_MIN_PATH) }.getOrNull()
             if (current == plan.targetMinRaw) {
-                val rollbackFailure = writeVerified(GPU_MIN_PATH, plan.originalMinRaw)
+                val rollbackFailure = writeVerified(GPU_MIN_PATH, plan.originalMinRaw, plan.targetMinRaw)
                 if (rollbackFailure == null) clearJournal()
                 else return@exclusive GpuBoostOutcome.Rejected(
                     "GPU 寫入後驗證失敗且回復失敗：$rollbackFailure；保留還原記錄"
@@ -110,7 +110,7 @@ class GpuBoostController(
                 GpuBoostOutcome.Restored(changed = false, externalChange = false)
             }
             target -> {
-                val failure = writeVerified(GPU_MIN_PATH, original)
+                val failure = writeVerified(GPU_MIN_PATH, original, current)
                 if (failure != null) {
                     GpuBoostOutcome.Rejected("GPU 還原失敗：$failure；保留還原記錄")
                 } else {
@@ -143,8 +143,8 @@ class GpuBoostController(
         }
     }
 
-    private fun writeVerified(path: String, value: Long): String? {
-        val reading = gateway.writeNode(path, value.toString(), SystemClock.elapsedRealtime())
+    private fun writeVerified(path: String, value: Long, expectedCurrent: Long): String? {
+        val reading = gateway.writeNode(path, value.toString(), expectedCurrent.toString(), SystemClock.elapsedRealtime())
             ?: return "Shizuku UserService 未連線"
         return when (reading) {
             is Reading.Value -> if (reading.value.trim().toLongOrNull() == value) null
