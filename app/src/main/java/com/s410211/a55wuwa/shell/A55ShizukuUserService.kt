@@ -266,7 +266,7 @@ class A55ShizukuUserService : IA55ShizukuService.Stub() {
 
     private fun isValidPackageName(value: String): Boolean =
         value.length in 3..255 &&
-            Regex("^[A-Za-z0-9_]+(?:\\\\.[A-Za-z0-9_]+)+$").matches(value)
+            Regex("^[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+$").matches(value)
 
     override fun getIdentity(): Array<String> {
         val selinuxContext = runCatching {
