@@ -201,7 +201,7 @@ class MainActivity : Activity() {
         refreshButton.text = "重新整理裝置與 GPU 節點"
         page.addView(refreshButton, marginParams(top = 16))
         page.addView(label(
-            "目前版本：0.3.0 · 裝置識別與唯讀 GPU 探測",
+            "目前版本：0.3.0 · GPU／CPU／Thermal 唯讀監控",
             11,
             Color.rgb(132, 148, 156),
             false
@@ -213,8 +213,8 @@ class MainActivity : Activity() {
         sampledAtMillis: Long
     ): String = buildString {
         appendLine("最近取樣：系統啟動後 ${sampledAtMillis} ms")
-        appendLine("以下是唯讀節點探測，不代表原始資料已具備負載／頻率語義。")
-        appendLine("只有確認零售韌體格式、單位與來源後，才會轉換成 GPU 百分比或頻率。")
+        appendLine("gpu_busy 會顯示 0–100 候選百分比解析；來源精度仍待確認。")
+        appendLine("GPU 頻率及限制節點保留原始值；單位與即時性未確認前不換算成 MHz。")
         gpuResults.forEach { (candidate, reading) ->
             appendLine()
             appendLine("${candidate.roleLabel()}  ${reading.statusLabel()}")
@@ -222,6 +222,7 @@ class MainActivity : Activity() {
             if (reading is Reading.Value) {
                 appendLine()
                 append("原始資料：${reading.value.toSafeDisplay()}")
+                if (candidate.note.isNotBlank()) append("\n說明：${candidate.note}")
                 if (candidate.role == com.s410211.a55wuwa.telemetry.GpuNodeRole.UTILIZATION_CANDIDATE) {
                     when (val parsed = InstantPercentageParser.parse(
                         reading.value,
