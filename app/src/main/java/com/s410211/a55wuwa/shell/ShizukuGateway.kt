@@ -267,6 +267,61 @@ class ShizukuGateway(
         }
     }
 
+    /**
+     * Writes only through the UserService's explicit node allowlist. The
+     * remote service validates live OPPs and policy maximum, then reads back.
+     */
+    fun writeNode(path: String, value: String, sampledAtMillis: Long): Reading<String>? {
+        val node = ShizukuNode.fromPath(path) ?: return Reading.Unsupported(
+            path, sampledAtMillis, "寫入目標不在白名單"
+        )
+        val service = remote ?: return Reading.TemporarilyUnavailable(
+            path, sampledAtMillis, "Shizuku UserService 尚未連線"
+        )
+        if (!service.asBinder().pingBinder()) {
+            return Reading.TemporarilyUnavailable(
+                path, sampledAtMillis, "Shizuku UserService Binder 已失效"
+            )
+        }
+        return try {
+            val response = service.writeNode(node.id, value)
+            val status = response.getOrNull(0).orEmpty()
+            val raw = response.getOrNull(1).orEmpty()
+            val detail = response.getOrNull(2).orEmpty().take(256)
+            when (status) {
+                "OK" -> if (raw.isBlank()) Reading.InvalidData(
+                    path, sampledAtMillis, "寫入成功回報缺少讀回值"
+                ) else Reading.Value(raw, path, "raw", sampledAtMillis)
+                "PERMISSION_DENIED" -> Reading.PermissionDenied(
+                    path, sampledAtMillis, detail.ifBlank { "遠端身分沒有寫入權限" }
+                )
+                "NOT_FOUND" -> Reading.NotFound(
+                    path, sampledAtMillis, detail.ifBlank { "控制節點不存在" }
+                )
+                "UNSUPPORTED" -> Reading.Unsupported(
+                    path, sampledAtMillis, detail.ifBlank { "控制節點不支援" }
+                )
+                "INVALID_DATA", "OUTPUT_TOO_LARGE" -> Reading.InvalidData(
+                    path, sampledAtMillis, detail.ifBlank { "寫入值不符合控制規則" }
+                )
+                "TEMPORARY" -> Reading.TemporarilyUnavailable(
+                    path, sampledAtMillis, detail.ifBlank { "控制節點暫時不可用" }
+                )
+                else -> Reading.Error(
+                    path, sampledAtMillis, detail.ifBlank { "Shizuku 寫入失敗：$status" }
+                )
+            }
+        } catch (error: RemoteException) {
+            Reading.TemporarilyUnavailable(
+                path, sampledAtMillis, "Shizuku IPC 中斷：" + error.javaClass.simpleName
+            )
+        } catch (error: RuntimeException) {
+            Reading.Error(
+                path, sampledAtMillis, "Shizuku 寫入呼叫失敗：" + error.javaClass.simpleName
+            )
+        }
+    }
+
     private fun handleBinderReceived() {
         if (closed) return
         if (Shizuku.isPreV11()) {
