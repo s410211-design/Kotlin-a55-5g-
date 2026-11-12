@@ -276,22 +276,15 @@ class A55ShizukuUserService : IA55ShizukuService.Stub() {
 
         val config = queryGameModeConfig(packageName)
         if (config[0] != STATUS_OK) return config
-        val actual = Regex(
-            """downscal(?:e|ing)[^0-9]*([0-9]+(?:\.[0-9]+)?)""",
-            RegexOption.IGNORE_CASE
-        ).find(config.getOrNull(1).orEmpty())?.groupValues?.getOrNull(1)
-        val matches = actual?.toFloatOrNull()?.let {
-            kotlin.math.abs(it - scale.toFloat()) < 0.001f
-        } == true
-        return if (matches) {
-            response(STATUS_OK, rawValue = scale, detail = config.getOrNull(1).orEmpty())
-        } else {
-            response(
-                STATUS_ERROR,
-                rawValue = config.getOrNull(1).orEmpty(),
-                detail = "GameManager downscale read-back did not match $scale"
-            )
+        val snapshot = config.getOrNull(1).orEmpty().trim()
+        if (snapshot.isBlank()) {
+            return response(STATUS_INVALID_DATA, detail = "GameManager returned an empty intervention snapshot")
         }
+        return response(
+            STATUS_OK,
+            rawValue = snapshot,
+            detail = "GameManager intervention snapshot read back"
+        )
     }
 
     override fun resetGameModeConfig(packageName: String, mode: String): Array<String> {
