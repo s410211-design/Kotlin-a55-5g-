@@ -459,7 +459,11 @@ class PerformanceSessionService : Service() {
 
     private fun setFpsStatus(status: String) {
         getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE)
-            .edit().putString("fps_status", status.take(240)).apply()
+            .edit()
+            .putString("fps_status", status.take(240))
+            .remove("fps_window")
+            .remove("fps_window_duration_ms")
+            .apply()
         updateHud()
     }
 
