@@ -191,7 +191,7 @@ class MainActivity : Activity() {
             }
         }
         restoreButton = Button(this).apply {
-            text = "停止加速／安全還原頻率"
+            text = "停止效能模式／還原原始設定"
             isAllCaps = false
             setOnClickListener {
                 requestSessionAction(PerformanceSessionService.ACTION_RESTORE)
@@ -283,7 +283,7 @@ class MainActivity : Activity() {
         page.addView(hideHudButton, marginParams(top = 8))
         page.addView(fpsButton, marginParams(top = 8))
         page.addView(stopFpsButton, marginParams(top = 8))
-        page.addView(card("效能加速狀態（CPU／GPU）", status) { sessionStatusValueText = it })
+        page.addView(card("效能模式狀態（GameManager／CPU／GPU）", status) { sessionStatusValueText = it })
         page.addView(card(
             "Boost 安全限制",
             "主要加速方式：透過 Shizuku 呼叫 Android GameManager，先查詢鳴潮是否支援 Performance Mode，再套用並讀回驗證；停止時還原原始模式。CPU 最低頻率調整只是輔助，不會提高最高頻率。GPU 節點在 SM-A5560 上需要 Root 權限，一般 Shizuku Shell 不會假裝成功。所有模式仍受 Samsung Power HAL 與原廠溫控限制。"
