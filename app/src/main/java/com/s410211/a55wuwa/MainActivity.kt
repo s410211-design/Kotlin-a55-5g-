@@ -90,6 +90,7 @@ class MainActivity : Activity() {
     private lateinit var restoreButton: Button
     private lateinit var stopSessionButton: Button
     private var pendingServiceAction: String? = null
+    private var pendingRecoveryRequested = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -348,6 +349,7 @@ class MainActivity : Activity() {
             ) {
                 dispatchSessionAction(action)
             } else {
+                pendingRecoveryRequested = false
                 shizukuValueText?.text =
                     "通知權限未授予；為避免背景服務狀態不透明，尚未啟動監控／Boost 服務。"
             }
@@ -889,10 +891,20 @@ class MainActivity : Activity() {
     override fun onStart() {
         super.onStart()
         activityVisible = true
-        val serviceActive = getSharedPreferences(
+        val servicePreferences = getSharedPreferences(
             PerformanceSessionService.SNAPSHOT_PREFS,
             MODE_PRIVATE
-        ).getBoolean("service_active", false)
+        )
+        val serviceActive = servicePreferences.getBoolean("service_active", false)
+        val cpuRestorePending = getSharedPreferences("cpu_boost_restore_journal", MODE_PRIVATE)
+            .getBoolean("journal_present", false)
+        val gpuRestorePending = getSharedPreferences("gpu_boost_restore_journal", MODE_PRIVATE)
+            .getBoolean("journal_present", false)
+        if ((cpuRestorePending || gpuRestorePending) && !serviceActive && !pendingRecoveryRequested) {
+            pendingRecoveryRequested = true
+            requestSessionAction(PerformanceSessionService.ACTION_START)
+            return
+        }
         if (serviceActive) {
             sessionHandler.removeCallbacks(sessionSnapshotPoll)
             sessionHandler.post(sessionSnapshotPoll)
