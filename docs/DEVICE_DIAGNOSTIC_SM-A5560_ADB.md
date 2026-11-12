@@ -45,6 +45,7 @@ adb shell ls -l /sys/kernel/gpu/ 成功列出目錄內容，證明該目錄存�
 |---|---:|---|
 | gpu_busy | 是 | **成功；兩次均回傳原始值 `0`** |
 | gpu_clock | 是 | **成功；兩次均回傳原始值 `0`** |
+| SGPU `cur_freq` | SGPU devfreq 項目存在 | **成功；一次回傳原始值 `0`** |
 | gpu_freq_table | 是 | 尚未測試 |
 | gpu_tmu | 是 | 尚未測試 |
 | gpu_model | 是 | 尚未測試 |
@@ -52,6 +53,8 @@ adb shell ls -l /sys/kernel/gpu/ 成功列出目錄內容，證明該目錄存�
 | sgpu_pm_monitor | 是 | 尚未測試 |
 | utilization_source | 否 | 本次清單未見 |
 | available_utilization_sources | 否 | 本次清單未見 |
+
+使用者於 2026-11-12 在相同影片播放、未執行遊戲的基線測試中，執行 `adb shell cat /sys/class/devfreq/10e00000.sgpu/cur_freq`，成功回傳原始值 `0`。目前觀察到 `gpu_busy`、`gpu_clock`、SGPU `cur_freq` 均可由 ADB Shell 讀取，但值皆為 0。此現象與 GPU 閒置/時鐘閘控相容，但尚未證實；不可將其當成有效 0 MHz 或已驗證的即時 GPU 頻率。
 
 使用者補充：上述 GPU 讀值測試時手機只是在播放影片，沒有執行遊戲。使用者於 2026-11-12 單獨執行兩次 `adb shell cat /sys/kernel/gpu/gpu_clock`，兩次皆成功回傳：
 
@@ -109,7 +112,7 @@ adb shell ls -l /sys/class/devfreq/ 的清單可見以下項目：
 170000c0.devfreq_icpu
 ~~~
 
-判定：devfreq 目錄可列出，且清單包含 SGPU 項目 10e00000.sgpu。目前只確認該項目存在；尚未確認 name、cur_freq、available_frequencies、min_freq、max_freq、governor 是否存在且可讀。
+判定：devfreq 目錄可列出，且清單包含 SGPU 項目 10e00000.sgpu。使用者於 2026-11-12 執行 `adb shell cat /sys/class/devfreq/10e00000.sgpu/cur_freq`，成功回傳原始值 `0`，沒有 Permission denied。這證明該路徑本次可讀，但 `0` 尚不能被判定為真實 GPU 頻率 0 Hz；需要與 GPU 負載、其他頻率來源及裝置活動狀態交叉驗證。`name`、`available_frequencies`、`min_freq`、`max_freq`、`governor` 仍未測試。
 
 本輪曾使用字面佔位路徑 /sys/class/devfreq/目錄名稱/...，因此得到 No such file or directory。這是因為路徑沒有替換成真實目錄名稱，不能據此判斷 SGPU 節點不存在或權限遭拒。後續應使用實際路徑 /sys/class/devfreq/10e00000.sgpu。
 
