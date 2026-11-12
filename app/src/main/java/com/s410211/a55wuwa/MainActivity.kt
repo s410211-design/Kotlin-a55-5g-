@@ -856,7 +856,10 @@ class MainActivity : Activity() {
                 val clock = prefs.getString(
                     "gpu_" + "/sys/kernel/gpu/gpu_clock".hashCode(), null
                 ) ?: "—"
-                gpuValueText?.text = "GPU busy raw：$busy\nGPU clock raw：$clock\n取樣：$at ms"
+                val devfreqClock = prefs.getString(
+                    "gpu_" + "/sys/class/devfreq/10e00000.sgpu/cur_freq".hashCode(), null
+                ) ?: "—"
+                gpuValueText?.text = "GPU busy raw：$busy\nGPU clock raw：$clock\ndevfreq cur_freq raw：$devfreqClock\n取樣：$at ms"
                 fun cpuText(index: Int): String {
                     val khz = prefs.getString("cpu_policy_$index", null)?.toLongOrNull()
                         ?: return "—"
