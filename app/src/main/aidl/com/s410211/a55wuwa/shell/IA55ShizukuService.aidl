@@ -17,6 +17,11 @@ interface IA55ShizukuService {
     // Query and change only Android GameManager modes for a validated installed game.
     String[] getGameMode(String packageName) = 8;
     String[] setGameMode(String packageName, String mode) = 9;
+    
+    // Fixed Android GameManager backbuffer downscale controls; package and ratio are validated.
+    String[] getGameModeConfig(String packageName) = 10;
+    String[] setGameModeDownscale(String packageName, String mode, String scale) = 11;
+    String[] resetGameModeConfig(String packageName, String mode) = 12;
 
     // Fixed SurfaceFlinger timestats commands; packageName is validated, never shell-interpolated.
     String[] startSurfaceFlingerTimeStats(String packageName) = 5;
