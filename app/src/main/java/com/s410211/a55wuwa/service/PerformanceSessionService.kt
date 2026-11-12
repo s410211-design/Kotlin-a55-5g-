@@ -64,7 +64,7 @@ class PerformanceSessionService : Service() {
     private val thermalRestoreQueued = AtomicBoolean(false)
     private val cpuLoadTracker = CpuLoadTracker()
     private val fpsLock = Any()
-    private var hudView: TextView? = null
+    @Volatile private var hudView: TextView? = null
     private var windowManager: WindowManager? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     @Volatile private var lastThermalRestoreAttemptStatus: Int = -1
