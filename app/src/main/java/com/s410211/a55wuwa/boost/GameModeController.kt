@@ -27,7 +27,7 @@ class GameModeController(context: Context, private val gateway: ShizukuGateway) 
         val before = readMode(packageName) ?: return@exclusive GameModeOutcome.Rejected(lastReadError)
         if ("performance" !in before.second) {
             return@exclusive GameModeOutcome.Rejected(
-                "此裝置未向鳴潮提供 Performance Mode（目前：\${before.first}；可用：\${before.second.joinToString()}）"
+                "此裝置未向鳴潮提供 Performance Mode（目前：${before.first}；可用：${before.second.joinToString()}）"
             )
         }
         if (before.first == "performance") return@exclusive GameModeOutcome.NoChange
@@ -98,10 +98,10 @@ class GameModeController(context: Context, private val gateway: ShizukuGateway) 
     }
 
     private fun readingReason(reading: Reading<String>?): String = when (reading) {
-        is Reading.PermissionDenied -> "權限拒絕：\${reading.reason}"
-        is Reading.Unsupported -> "不支援：\${reading.reason}"
-        is Reading.InvalidData -> "資料無效：\${reading.reason}"
-        is Reading.TemporarilyUnavailable -> "暫時不可用：\${reading.reason}"
+        is Reading.PermissionDenied -> "權限拒絕：${reading.reason}"
+        is Reading.Unsupported -> "不支援：${reading.reason}"
+        is Reading.InvalidData -> "資料無效：${reading.reason}"
+        is Reading.TemporarilyUnavailable -> "暫時不可用：${reading.reason}"
         is Reading.Error -> reading.reason
         is Reading.NotFound -> reading.reason
         is Reading.AwaitingSample -> reading.reason
@@ -110,7 +110,7 @@ class GameModeController(context: Context, private val gateway: ShizukuGateway) 
     }
 
     private fun isValidPackageName(value: String): Boolean =
-        value.length in 3..255 && Regex("^[A-Za-z0-9_]+(?:\\\\.[A-Za-z0-9_]+)+$").matches(value)
+        value.length in 3..255 && Regex("^[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+$").matches(value)
 
     private fun clearJournal() { preferences.edit().clear().commit() }
 
