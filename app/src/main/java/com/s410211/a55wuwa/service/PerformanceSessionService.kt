@@ -24,6 +24,8 @@ import com.s410211.a55wuwa.boost.CpuBoostController
 import com.s410211.a55wuwa.boost.CpuBoostOutcome
 import com.s410211.a55wuwa.boost.GpuBoostController
 import com.s410211.a55wuwa.boost.GpuBoostOutcome
+import com.s410211.a55wuwa.boost.GameModeController
+import com.s410211.a55wuwa.boost.GameModeOutcome
 import com.s410211.a55wuwa.shell.ShizukuGateway
 import com.s410211.a55wuwa.telemetry.GpuNodeCatalog
 import com.s410211.a55wuwa.telemetry.CpuLoadTracker
@@ -52,6 +54,7 @@ class PerformanceSessionService : Service() {
     private lateinit var gateway: ShizukuGateway
     private lateinit var boostController: CpuBoostController
     private lateinit var gpuBoostController: GpuBoostController
+    private lateinit var gameModeController: GameModeController
     private lateinit var scheduler: ScheduledExecutorService
     private lateinit var fpsScheduler: ScheduledExecutorService
     private lateinit var operations: ExecutorService
@@ -87,6 +90,7 @@ class PerformanceSessionService : Service() {
         val sharedGateway = gatewayPlaceholder()
         boostController = CpuBoostController(applicationContext, sharedGateway)
         gpuBoostController = GpuBoostController(applicationContext, sharedGateway)
+        gameModeController = GameModeController(applicationContext, sharedGateway)
         val savedFpsPreferences = getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE)
         fpsCaptureRequested = savedFpsPreferences.getBoolean("fps_capture_requested", false)
         fpsStopRequested = savedFpsPreferences.getBoolean("fps_stop_requested", false)
@@ -179,9 +183,16 @@ class PerformanceSessionService : Service() {
                     if (!awaitUserService()) {
                         sessionText = "加速未啟動：尚未連接 Shizuku 系統服務"
                     } else {
+                        val packageName = getSharedPreferences(SNAPSHOT_PREFS, MODE_PRIVATE)
+                            .getString("game_package", null)
+                        val gameModeResult = if (packageName.isNullOrBlank()) {
+                            GameModeOutcome.Rejected("尚未選取鳴潮套件；請先按「啟動鳴潮」")
+                        } else {
+                            gameModeController.apply(packageName)
+                        }
                         val cpuResult = boostController.apply(percent)
                         val gpuResult = gpuBoostController.apply(percent)
-                        sessionText = applyBothBoostsText(cpuResult, gpuResult)
+                        sessionText = applyAllBoostsText(gameModeResult, cpuResult, gpuResult)
                     }
                     updateNotification()
                 }
@@ -216,12 +227,15 @@ class PerformanceSessionService : Service() {
                         updateNotification()
                         return@execute
                     }
+                    val gameRestore = gameModeController.restore()
                     val cpuRestore = boostController.restore()
                     val gpuRestore = gpuBoostController.restore()
-                    if (cpuRestore is CpuBoostOutcome.Rejected ||
+                    if (gameRestore is GameModeOutcome.Rejected ||
+                        cpuRestore is CpuBoostOutcome.Rejected ||
                         gpuRestore is GpuBoostOutcome.Rejected
                     ) {
-                        sessionText = "停止暫緩：CPU " + cpuRestoreText(cpuRestore) +
+                        sessionText = "停止暫緩：GameManager " + gameModeRestoreText(gameRestore) +
+                            "；CPU " + cpuRestoreText(cpuRestore) +
                             "；GPU " + gpuRestoreText(gpuRestore)
                         updateNotification()
                         return@execute
@@ -604,17 +618,35 @@ class PerformanceSessionService : Service() {
     }
 
     private fun hasPendingBoostJournal(): Boolean =
-        boostController.hasPendingJournal() || gpuBoostController.hasPendingJournal()
+        gameModeController.hasPendingJournal() || boostController.hasPendingJournal() || gpuBoostController.hasPendingJournal()
 
     private fun applyBothBoostsText(
         cpu: CpuBoostOutcome,
         gpu: GpuBoostOutcome
     ): String = "加速調整結果：\nCPU：${cpuOutcomeText(cpu)}\nGPU：${gpuOutcomeText(gpu)}"
 
+    private fun applyAllBoostsText(game: GameModeOutcome, cpu: CpuBoostOutcome, gpu: GpuBoostOutcome): String =
+        "效能模式結果：\\nGameManager：${gameModeOutcomeText(game)}\\nCPU：${cpuOutcomeText(cpu)}\\nGPU：${gpuOutcomeText(gpu)}"
+
     private fun restoreBothBoostsText(): String {
+        val game = gameModeController.restore()
         val cpu = boostController.restore()
         val gpu = gpuBoostController.restore()
-        return "CPU：${cpuRestoreText(cpu)}；GPU：${gpuRestoreText(gpu)}"
+        return "GameManager：${gameModeRestoreText(game)}；CPU：${cpuRestoreText(cpu)}；GPU：${gpuRestoreText(gpu)}"
+    }
+
+    private fun gameModeOutcomeText(outcome: GameModeOutcome): String = when (outcome) {
+        is GameModeOutcome.Applied -> "已切換 Performance（原始模式：${outcome.originalMode}），讀回確認"
+        is GameModeOutcome.Restored -> if (outcome.externalChange) "偵測到外部模式變更，未覆寫" else "目前已是／已切回 ${outcome.originalMode}"
+        is GameModeOutcome.Rejected -> "未套用：${outcome.reason}"
+        GameModeOutcome.NoChange -> "已經是 Performance，無需變更"
+    }
+
+    private fun gameModeRestoreText(outcome: GameModeOutcome): String = when (outcome) {
+        is GameModeOutcome.Restored -> if (outcome.externalChange) "外部變更未覆寫" else "已還原 ${outcome.originalMode}"
+        is GameModeOutcome.Rejected -> "還原失敗：${outcome.reason}"
+        is GameModeOutcome.Applied -> "狀態異常：仍處於 Performance"
+        GameModeOutcome.NoChange -> "無待還原項目"
     }
 
     private fun cpuOutcomeText(outcome: CpuBoostOutcome): String = when (outcome) {
@@ -697,7 +729,7 @@ class PerformanceSessionService : Service() {
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentTitle("鳴潮效能監控")
             .setContentText("$sessionText · Thermal $thermal")
-            .setStyle(Notification.BigTextStyle().bigText("$sessionText\n熱狀態：$thermal\nBoost 只調整 CPU/GPU 最低頻率 floor，不提高最高上限、不改電壓或停用溫控。"))
+            .setStyle(Notification.BigTextStyle().bigText("$sessionText\n熱狀態：$thermal\nBoost 優先使用 Android GameManager Performance Mode；CPU/GPU 頻率控制僅作受權限限制的輔助，不提高原廠最高上限、不改電壓或停用溫控。"))
             .setContentIntent(launchIntent)
             .setOngoing(true)
             .addAction(Notification.Action.Builder(android.R.drawable.ic_menu_revert, "還原 Boost", restoreIntent).build())
