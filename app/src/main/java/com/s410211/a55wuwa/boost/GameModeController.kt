@@ -139,7 +139,7 @@ class GameModeController(context: Context, private val gateway: ShizukuGateway) 
         when {
             currentMode.first == originalMode -> Unit
             currentMode.first == targetMode -> {
-                if (originalMode != "custom" && originalMode !in currentMode.second) {
+                if (originalMode !in setOf("standard", "custom") && originalMode !in currentMode.second) {
                     return@exclusive GameModeOutcome.Rejected("原始模式已不再受支援，保留還原記錄")
                 }
                 val restored = gateway.setGameMode(
