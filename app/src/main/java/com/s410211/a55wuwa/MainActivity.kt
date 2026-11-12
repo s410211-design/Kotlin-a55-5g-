@@ -1,6 +1,7 @@
 package com.s410211.a55wuwa
 
 import android.app.Activity
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -14,6 +15,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import com.s410211.a55wuwa.shell.ShizukuGateway
 import com.s410211.a55wuwa.shell.ShizukuGatewayState
+import com.s410211.a55wuwa.service.PerformanceSessionService
 import com.s410211.a55wuwa.telemetry.GpuSysfsReader
 import com.s410211.a55wuwa.telemetry.CpuFrequencyParser
 import com.s410211.a55wuwa.telemetry.CpuFrequencyReader
@@ -33,7 +35,7 @@ import java.util.concurrent.Executors
 class MainActivity : Activity() {
     private val ioExecutor = Executors.newSingleThreadExecutor()
     private val shizukuGateway by lazy {
-        ShizukuGateway { state -> onShizukuStateChanged(state) }
+        ShizukuGateway(removeUserServiceOnClose = false) { state -> onShizukuStateChanged(state) }
     }
     private val gpuSampler by lazy {
         GpuTelemetrySampler(
@@ -61,6 +63,11 @@ class MainActivity : Activity() {
     private lateinit var page: LinearLayout
     private lateinit var refreshButton: Button
     private lateinit var shizukuButton: Button
+    private lateinit var sessionButton: Button
+    private lateinit var boostButton: Button
+    private lateinit var restoreButton: Button
+    private lateinit var stopSessionButton: Button
+    private var pendingServiceAction: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -106,10 +113,92 @@ class MainActivity : Activity() {
             isAllCaps = false
             setOnClickListener { shizukuGateway.connectOrRequestPermission() }
         }
+        sessionButton = Button(this).apply {
+            text = "啟動背景監控"
+            isAllCaps = false
+            setOnClickListener { requestSessionAction(PerformanceSessionService.ACTION_START) }
+        }
+        boostButton = Button(this).apply {
+            text = "啟動 CPU Boost（80% policy 上限目標）"
+            isAllCaps = false
+            setOnClickListener {
+                requestSessionAction(PerformanceSessionService.ACTION_BOOST)
+            }
+        }
+        restoreButton = Button(this).apply {
+            text = "停止 Boost／安全還原"
+            isAllCaps = false
+            setOnClickListener {
+                requestSessionAction(PerformanceSessionService.ACTION_RESTORE)
+            }
+        }
+        stopSessionButton = Button(this).apply {
+            text = "停止背景監控服務"
+            isAllCaps = false
+            setOnClickListener {
+                requestSessionAction(PerformanceSessionService.ACTION_STOP)
+            }
+        }
         setContentView(scroll)
         shizukuGateway.start()
         renderLoading()
         refreshProfile()
+    }
+
+    private fun addSessionControls() {
+        val status = getSharedPreferences(
+            PerformanceSessionService.SNAPSHOT_PREFS,
+            MODE_PRIVATE
+        ).getString("session_status", "尚未啟動背景監控") ?: "尚未啟動背景監控"
+        page.addView(card("背景監控／Boost 服務", status))
+        page.addView(sessionButton, marginParams(top = 8))
+        page.addView(boostButton, marginParams(top = 8))
+        page.addView(restoreButton, marginParams(top = 8))
+        page.addView(stopSessionButton, marginParams(top = 8))
+    }
+
+    private fun requestSessionAction(action: String) {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            pendingServiceAction = action
+            requestPermissions(
+                arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                NOTIFICATION_PERMISSION_REQUEST
+            )
+            return
+        }
+        dispatchSessionAction(action)
+    }
+
+    private fun dispatchSessionAction(action: String) {
+        val intent = Intent(this, PerformanceSessionService::class.java).setAction(action)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == NOTIFICATION_PERMISSION_REQUEST) {
+            val action = pendingServiceAction
+            pendingServiceAction = null
+            if (action != null && grantResults.firstOrNull() ==
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) {
+                dispatchSessionAction(action)
+            } else {
+                shizukuValueText?.text =
+                    "通知權限未授予；為避免背景服務狀態不透明，尚未啟動監控／Boost 服務。"
+            }
+        }
     }
 
     private fun onShizukuStateChanged(state: ShizukuGatewayState) {
@@ -168,6 +257,7 @@ class MainActivity : Activity() {
             shizukuValueText = it
         })
         page.addView(shizukuButton, marginParams(top = 10))
+        addSessionControls()
         page.addView(refreshButton, marginParams(top = 10))
     }
 
@@ -274,6 +364,7 @@ class MainActivity : Activity() {
             shizukuGateway.snapshot().displayText()
         ) { shizukuValueText = it })
         page.addView(shizukuButton, marginParams(top = 10))
+        addSessionControls()
         page.addView(card(
             "安全最佳化",
             "目前不會寫入 GPU、CPU 或溫控設定。必須先確認裝置支援、原值、讀回驗證與安全還原方式。"
@@ -511,7 +602,7 @@ class MainActivity : Activity() {
         super.onStop()
     }
 
-    override fun onDestroy() {
+    private companion object {\n        const val NOTIFICATION_PERMISSION_REQUEST = 5502\n    }\n\n    override fun onDestroy() {
         gpuSampler.close()
         cpuSampler.close()
         shizukuGateway.close()
