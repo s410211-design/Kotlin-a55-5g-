@@ -403,12 +403,13 @@ class PerformanceSessionService : Service() {
                     val current = parsed.value
                     val previousFrames = lastFpsTotalFrames
                     val previousAt = lastFpsSampleAt
+                    val intervalMs = if (previousAt != null && at > previousAt) at - previousAt else null
                     val windowFps = if (
-                        previousFrames != null && previousAt != null &&
-                        current.totalFrames >= previousFrames && at > previousAt &&
+                        previousFrames != null && intervalMs != null &&
+                        current.totalFrames >= previousFrames &&
                         current.totalFrames > previousFrames
                     ) {
-                        (current.totalFrames - previousFrames) * 1_000.0 / (at - previousAt)
+                        (current.totalFrames - previousFrames) * 1_000.0 / intervalMs
                     } else null
 
                     lastFpsTotalFrames = current.totalFrames
@@ -418,6 +419,7 @@ class PerformanceSessionService : Service() {
                         .putString("fps_status", if (windowFps == null) "等待下一個有效影格區間" else "有效")
                         .putFloat("fps_cumulative", current.cumulativeAverageFps.toFloat())
                         .putString("fps_window", windowFps?.toString())
+                        .putLong("fps_window_duration_ms", intervalMs ?: 0L)
                         .putLong("fps_total_frames", current.totalFrames)
                         .putString("fps_layer", current.layerName.take(240))
                         .putLong("fps_sampled_at", at)
@@ -450,6 +452,7 @@ class PerformanceSessionService : Service() {
             .putBoolean("fps_stop_requested", false)
             .putString("fps_status", "FPS 擷取已停止")
             .remove("fps_window")
+            .remove("fps_window_duration_ms")
             .apply()
         true
     }
@@ -532,9 +535,10 @@ class PerformanceSessionService : Service() {
         }
         val fpsWindow = prefs.getString("fps_window", null)?.toDoubleOrNull()
         val fpsCumulative = prefs.getFloat("fps_cumulative", -1f)
+        val fpsDurationSeconds = prefs.getLong("fps_window_duration_ms", 0L) / 1_000.0
         val fpsText = when {
             fpsWindow != null && fpsWindow.isFinite() && fpsWindow > 0.0 ->
-                String.format(java.util.Locale.US, "%.1f FPS (5s)", fpsWindow)
+                String.format(java.util.Locale.US, "%.1f FPS (%.1fs)", fpsWindow, fpsDurationSeconds)
             fpsCumulative > 0f ->
                 String.format(java.util.Locale.US, "%.1f FPS (session avg)", fpsCumulative)
             else -> "FPS：${prefs.getString("fps_status", "未啟動") ?: "未啟動"}"
