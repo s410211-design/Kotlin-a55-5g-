@@ -111,7 +111,11 @@ class PerformanceSessionService : Service() {
                 }
             }
             if (state.userServiceConnected && fpsStopRequested) {
-                operations.execute { stopFpsCapture() }
+                operations.execute {
+                    val stopped = stopFpsCapture()
+                    sessionText = if (stopped) "FPS 擷取已安全停止" else "FPS 停止仍待處理"
+                    updateNotification()
+                }
             } else if (state.userServiceConnected && fpsCaptureRequested && !fpsCaptureActive) {
                 operations.execute { startFpsCapture() }
             }
