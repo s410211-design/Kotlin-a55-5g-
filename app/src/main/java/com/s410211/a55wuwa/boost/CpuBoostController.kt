@@ -72,7 +72,7 @@ class CpuBoostController(
 
         val applied = mutableListOf<CpuBoostPlan>()
         for (plan in plans) {
-            val result = writeVerified(pathFor(plan.policyId), plan.targetMinKHz)
+            val result = writeVerified(pathFor(plan.policyId), plan.targetMinKHz, plan.originalMinKHz)
             if (result != null) {
                 val rollbackErrors = rollback(applied)
                 if (rollbackErrors.isEmpty()) clearJournal()
@@ -116,7 +116,7 @@ class CpuBoostController(
                         "${plan.policyId} 還原記錄無效，拒絕寫入"
                     )
                 RestoreDecision.RESTORE_ORIGINAL -> {
-                    val failure = writeVerified(pathFor(plan.policyId), plan.originalMinKHz)
+                    val failure = writeVerified(pathFor(plan.policyId), plan.originalMinKHz, plan.targetMinKHz)
                     if (failure != null) {
                         return@withExclusiveOperation CpuBoostOutcome.Rejected(
                             "${plan.policyId} 還原失敗：$failure；保留還原記錄"
@@ -167,8 +167,8 @@ class CpuBoostController(
     }
 
     /** Returns null only when the remote write and read-back both match. */
-    private fun writeVerified(path: String, value: Long): String? {
-        val result = gateway.writeNode(path, value.toString(), SystemClock.elapsedRealtime())
+    private fun writeVerified(path: String, value: Long, expectedCurrent: Long): String? {
+        val result = gateway.writeNode(path, value.toString(), expectedCurrent.toString(), SystemClock.elapsedRealtime())
             ?: return "Shizuku UserService 尚未連線"
         return when (result) {
             is Reading.Value -> if (result.value.trim().toLongOrNull() == value) null
