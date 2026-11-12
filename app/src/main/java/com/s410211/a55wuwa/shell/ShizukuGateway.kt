@@ -44,6 +44,7 @@ data class ShizukuGatewayState(
  * obtained from inside the UserService; the App never assumes Shell is Root.
  */
 class ShizukuGateway(
+    private val removeUserServiceOnClose: Boolean = true,
     private val onStateChanged: (ShizukuGatewayState) -> Unit
 ) : AutoCloseable {
 
