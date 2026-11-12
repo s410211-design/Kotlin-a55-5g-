@@ -179,6 +179,14 @@ lrwxrwxrwx 1 root root u:object_r:sysfs:s0 0 2026-11-09 18:39 /sys/class/thermal
 
 判定：連結 inode 本身可被一般 ADB Shell 查詢，其標籤為 `u:object_r:sysfs:s0`，目標相對路徑為 `../../devices/virtual/thermal/thermal_zone0`。**這是 symlink 本身的 mode/label，不是目標目錄的 mode/label**；不能用此標籤判定目標的 SELinux type。下一步應對解析後的實際路徑 `/sys/devices/virtual/thermal/thermal_zone0` 執行 `ls -ldZ`，再視結果測試 `type` / `temp`。拒絕原因仍未定（DAC / SELinux / target path traversal policy）。
 
+使用者接著執行 `adb shell ls -ldZ /sys/devices/virtual/thermal/thermal_zone0`，成功取得實際目標目錄資訊：
+
+~~~text
+drwxr-xr-x 3 root root u:object_r:sysfs_thermal:s0 0 2026-11-08 23:21 /sys/devices/virtual/thermal/thermal_zone0
+~~~
+
+判讀：目標目錄 owner/group 為 `root:root`、mode `0755`，SELinux label 為 `u:object_r:sysfs_thermal:s0`。以傳統 DAC 權限看，other 具有 read + execute，因此 UID 2000 的 shell 在 DAC 層具備列目錄/搜尋權限；但此前跟隨 `/sys/class/thermal/thermal_zone0` 列出目錄回傳 Permission denied。SELinux enforcing 下的 `sysfs_thermal` policy 是待查的優先方向，但尚無 AVC denial 或目標 children 的實際讀取結果，**不可把根因定論為 SELinux**。下一步對實際路徑執行 `ls -laZ`，再確認 `type` / `temp` 的檔案節點與讀取結果。
+
 ## 5. 本輪結論
 
 ### 已確認
