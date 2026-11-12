@@ -1,6 +1,7 @@
 package com.s410211.a55wuwa
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
@@ -9,6 +10,7 @@ import android.os.Build
 import android.os.Bundle
 import android.view.WindowInsets
 import android.widget.Button
+import android.widget.Toast
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -29,6 +31,7 @@ import com.s410211.a55wuwa.telemetry.InstantPercentageParser
 import com.s410211.a55wuwa.telemetry.ThermalStatusReader
 import com.s410211.a55wuwa.telemetry.ThermalStatusSnapshot
 import com.s410211.a55wuwa.telemetry.Reading
+import com.s410211.a55wuwa.telemetry.DeviceHealthReader
 import java.util.Locale
 import java.util.concurrent.Executors
 
@@ -63,6 +66,7 @@ class MainActivity : Activity() {
     private lateinit var page: LinearLayout
     private lateinit var refreshButton: Button
     private lateinit var shizukuButton: Button
+    private lateinit var gameButton: Button
     private lateinit var sessionButton: Button
     private lateinit var boostButton: Button
     private lateinit var restoreButton: Button
@@ -113,6 +117,11 @@ class MainActivity : Activity() {
             isAllCaps = false
             setOnClickListener { shizukuGateway.connectOrRequestPermission() }
         }
+        gameButton = Button(this).apply {
+            text = "啟動鳴潮"
+            isAllCaps = false
+            setOnClickListener { launchWutheringWaves() }
+        }
         sessionButton = Button(this).apply {
             text = "啟動背景監控"
             isAllCaps = false
@@ -145,11 +154,58 @@ class MainActivity : Activity() {
         refreshProfile()
     }
 
+    private fun launchWutheringWaves() {
+        val launcherQuery = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val matches = packageManager.queryIntentActivities(launcherQuery, 0)
+            .mapNotNull { info ->
+                val label = info.loadLabel(packageManager)?.toString().orEmpty()
+                val isGame = label.contains("鳴潮", ignoreCase = true) ||
+                    label.contains("Wuthering Waves", ignoreCase = true)
+                if (isGame) info.activityInfo.packageName to label else null
+            }
+            .distinctBy { it.first }
+            .sortedBy { it.second }
+
+        if (matches.isEmpty()) {
+            Toast.makeText(
+                this,
+                "找不到名稱為「鳴潮／Wuthering Waves」的啟動器項目；請確認遊戲已安裝。",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        fun launch(packageName: String) {
+            val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+            if (launchIntent == null) {
+                Toast.makeText(this, "無法取得該遊戲的啟動入口。", Toast.LENGTH_LONG).show()
+            } else {
+                runCatching { startActivity(launchIntent) }
+                    .onFailure {
+                        Toast.makeText(this, "啟動失敗：${it.javaClass.simpleName}", Toast.LENGTH_LONG).show()
+                    }
+            }
+        }
+
+        if (matches.size == 1) {
+            launch(matches.first().first)
+        } else {
+            AlertDialog.Builder(this)
+                .setTitle("選擇鳴潮版本")
+                .setItems(matches.map { it.second }.toTypedArray()) { _, index ->
+                    launch(matches[index].first)
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
+    }
+
     private fun addSessionControls() {
         val status = getSharedPreferences(
             PerformanceSessionService.SNAPSHOT_PREFS,
             MODE_PRIVATE
         ).getString("session_status", "尚未啟動背景監控") ?: "尚未啟動背景監控"
+        page.addView(gameButton, marginParams(top = 10))
         page.addView(card("背景監控／Boost 服務", status))
         page.addView(sessionButton, marginParams(top = 8))
         page.addView(boostButton, marginParams(top = 8))
@@ -327,6 +383,17 @@ class MainActivity : Activity() {
                 failure?.javaClass?.simpleName ?: "未知錯誤"
             ))
         }
+
+        val health = DeviceHealthReader.read(this)
+        val healthText = buildString {
+            appendLine("電池電量：${health.batteryLevelPercent?.let { "$it%" } ?: "無法取得"}")
+            appendLine("電池溫度：${health.batteryTemperatureCelsius?.let { String.format(Locale.US, "%.1f°C", it) } ?: "無法取得"}")
+            appendLine("電池電壓：${health.batteryVoltageMillivolts?.let { "$it mV" } ?: "無法取得"}")
+            appendLine("充電狀態：${when (health.charging) { true -> "充電中"; false -> "未充電"; null -> "未知" }}")
+            appendLine("網路：${health.networkTransport ?: "未連線／未知"}")
+            append("網際網路驗證：${when (health.networkValidated) { true -> "已驗證"; false -> "未驗證"; null -> "未知" }}")
+        }
+        page.addView(card("電池與網路", healthText))
 
         page.addView(card(
             "目標實機設定",
