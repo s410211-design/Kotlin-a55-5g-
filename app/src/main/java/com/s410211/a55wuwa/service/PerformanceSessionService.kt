@@ -275,6 +275,7 @@ class PerformanceSessionService : Service() {
             .putLong("sampled_at", at)
 
         GpuNodeCatalog.candidates.forEach { candidate ->
+            snapshot.remove("gpu_" + candidate.path.hashCode())
             val remote = gateway.readNode(candidate.path, at)
             val reading = remote ?: GpuSysfsReader.read(candidate, at)
             if (reading is Reading.Value) {
@@ -283,12 +284,14 @@ class PerformanceSessionService : Service() {
         }
 
         CPU_CURRENT_PATHS.forEachIndexed { index, path ->
+            snapshot.remove("cpu_policy_$index")
             val reading = gateway.readNode(path, at)
             if (reading is Reading.Value) {
                 snapshot.putString("cpu_policy_$index", reading.value.take(64))
             }
         }
 
+        snapshot.remove("cpu_load_percent").remove("cpu_load_status")
         val procStat = gateway.readNode("/proc/stat", at)
         if (procStat is Reading.Value) {
             when (val parsed = CpuStatParser.parse(procStat.value, at)) {
@@ -300,6 +303,8 @@ class PerformanceSessionService : Service() {
             }
         } else if (procStat != null) {
             snapshot.putString("cpu_load_status", readingReason(procStat))
+        } else {
+            snapshot.putString("cpu_load_status", "Shizuku UserService 未連線")
         }
 
         val health = DeviceHealthReader.read(this)
