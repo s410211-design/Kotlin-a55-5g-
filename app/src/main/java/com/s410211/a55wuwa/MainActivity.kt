@@ -9,6 +9,8 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.Bundle
 import android.view.WindowInsets
 import android.widget.Button
@@ -24,6 +26,7 @@ import com.s410211.a55wuwa.telemetry.GpuSysfsReader
 import com.s410211.a55wuwa.telemetry.CpuFrequencyParser
 import com.s410211.a55wuwa.telemetry.CpuFrequencyReader
 import com.s410211.a55wuwa.telemetry.GpuNodeCandidate
+import com.s410211.a55wuwa.telemetry.GpuNodeCatalog
 import com.s410211.a55wuwa.telemetry.GpuSampleBatch
 import com.s410211.a55wuwa.telemetry.GpuTelemetrySampler
 import com.s410211.a55wuwa.telemetry.CpuFrequencyPolicy
@@ -39,6 +42,8 @@ import java.util.concurrent.Executors
 
 class MainActivity : Activity() {
     private val ioExecutor = Executors.newSingleThreadExecutor()
+    private val sessionHandler = Handler(Looper.getMainLooper())
+    private var servicePollMisses = 0
     private val shizukuGateway by lazy {
         ShizukuGateway(removeUserServiceOnClose = false) { state -> onShizukuStateChanged(state) }
     }
@@ -65,6 +70,8 @@ class MainActivity : Activity() {
     private var cpuValueText: TextView? = null
     private var thermalValueText: TextView? = null
     private var shizukuValueText: TextView? = null
+    private var sessionStatusValueText: TextView? = null
+    private var fpsValueText: TextView? = null
     private lateinit var page: LinearLayout
     private lateinit var refreshButton: Button
     private lateinit var shizukuButton: Button
@@ -259,7 +266,7 @@ class MainActivity : Activity() {
         page.addView(hideHudButton, marginParams(top = 8))
         page.addView(fpsButton, marginParams(top = 8))
         page.addView(stopFpsButton, marginParams(top = 8))
-        page.addView(card("背景監控／Boost 服務", status))
+        page.addView(card("背景監控／Boost 服務", status) { sessionStatusValueText = it })
         page.addView(sessionButton, marginParams(top = 8))
         page.addView(boostButton, marginParams(top = 8))
         page.addView(restoreButton, marginParams(top = 8))
@@ -306,6 +313,10 @@ class MainActivity : Activity() {
     }
 
     private fun dispatchSessionAction(action: String) {
+        stopLocalSamplers()
+        sessionHandler.removeCallbacks(sessionSnapshotPoll)
+        servicePollMisses = 0
+        sessionHandler.post(sessionSnapshotPoll)
         val intent = Intent(this, PerformanceSessionService::class.java).setAction(action)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(intent)
@@ -518,7 +529,7 @@ class MainActivity : Activity() {
         page.addView(card(
             "遊戲 FPS（SurfaceFlinger timestats）",
             fpsText
-        ))
+        ) { fpsValueText = it })
         page.addView(card(
             "Shizuku 權限與執行身分",
             shizukuGateway.snapshot().displayText()
