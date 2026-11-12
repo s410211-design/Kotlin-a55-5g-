@@ -23,6 +23,20 @@ class GpuBoostPolicyTest {
     }
 
     @Test
+    fun percentageCalculationDoesNotOverflowForLargePositiveLimits() {
+        val result = GpuBoostPolicy.planAtPercent(
+            GpuPolicySnapshot(
+                currentMinRaw = 1L,
+                currentMaxRaw = Long.MAX_VALUE,
+                availableOperatingPointsRaw = setOf(1L, Long.MAX_VALUE)
+            ),
+            90
+        )
+        assertTrue(result is GpuBoostPlanResult.Ready)
+        assertEquals(Long.MAX_VALUE, (result as GpuBoostPlanResult.Ready).plan.targetMinRaw)
+    }
+
+    @Test
     fun excludesOperatingPointsAboveOemMaximum() {
         val result = GpuBoostPolicy.planAtPercent(
             GpuPolicySnapshot(
