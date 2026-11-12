@@ -17,6 +17,7 @@ data class GameFpsSnapshot(
 object SurfaceFlingerTimeStatsParser {
     private val framesPattern = Regex("""(?m)^\s*totalFrames\s*=\s*(\d+)\s*$""")
     private val fpsPattern = Regex("""(?m)^\s*averageFPS\s*=\s*([0-9]+(?:\.[0-9]+)?)\s*$""")
+    private val histogramBinPattern = Regex("""(\d+)ms=(\d+)""")
 
     fun parse(
         output: String,
@@ -78,14 +79,21 @@ object SurfaceFlingerTimeStatsParser {
         val marker = "presentToPresent histogram is as below:"
         val markerIndex = section.indexOf(marker)
         if (markerIndex < 0) return null
+
         val afterMarker = section.substring(markerIndex + marker.length)
         val nextHistogram = afterMarker.indexOf(" histogram is as below:")
-        val block = if (nextHistogram >= 0) afterMarker.substring(0, nextHistogram) else afterMarker
-    private val HISTOGRAM_BIN_PATTERN = Regex("""(\d+)ms=(\d+)""")
+        val block = if (nextHistogram >= 0) {
+            afterMarker.substring(0, nextHistogram)
+        } else {
+            afterMarker
+        }
+
+        val bins = histogramBinPattern.findAll(block).mapNotNull { match ->
             val millis = match.groupValues[1].toIntOrNull() ?: return@mapNotNull null
             val count = match.groupValues[2].toLongOrNull() ?: return@mapNotNull null
             if (millis < 0 || count < 0L) null else millis to count
         }.toMap()
+
         return bins.takeIf { it.isNotEmpty() }
     }
 
@@ -107,7 +115,6 @@ object SurfaceFlingerTimeStatsParser {
             layerName.contains("$packageName]") ||
             layerName.endsWith(packageName)
 
-    private val HISTOGRAM_BIN_PATTERN = Regex("""(\d+)ms=(\d+)""")
     private const val MAX_OUTPUT_CHARS = 262_144
     private const val MIN_VALID_FPS = 1.0
     private const val MAX_VALID_FPS = 240.0
