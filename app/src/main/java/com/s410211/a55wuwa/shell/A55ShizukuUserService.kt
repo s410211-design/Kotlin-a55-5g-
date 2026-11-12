@@ -113,7 +113,7 @@ class A55ShizukuUserService : IA55ShizukuService.Stub() {
 
             val fd = Os.open(control.path, OsConstants.O_WRONLY, 0)
             try {
-                val bytes = "$requested\\n".toByteArray(Charsets.US_ASCII)
+                val bytes = "$requested\n".toByteArray(Charsets.US_ASCII)
                 val written = Os.write(fd, bytes, 0, bytes.size)
                 if (written != bytes.size) {
                     return response(STATUS_ERROR, detail = "Incomplete ${control.label} sysfs write")
