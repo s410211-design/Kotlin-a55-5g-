@@ -64,7 +64,7 @@ class A55ShizukuUserService : IA55ShizukuService.Stub() {
      * exposed by this policy and remain within its live scaling_max_freq.
      * GPU controls and CPU maximum limits are deliberately not writable.
      */
-    override fun writeNode(nodeId: Int, value: String): Array<String> {
+    override fun writeNode(nodeId: Int, value: String, expectedCurrentValue: String): Array<String> {
         val control = when (nodeId) {
             ShizukuNode.CPU_POLICY0_MIN.id -> FrequencyControl(
                 "/sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq",
@@ -89,11 +89,22 @@ class A55ShizukuUserService : IA55ShizukuService.Stub() {
 
         val requested = value.trim().toLongOrNull()
             ?: return response(STATUS_INVALID_DATA, detail = "Frequency must be an integer")
-        if (requested <= 0L) {
-            return response(STATUS_INVALID_DATA, detail = "Frequency must be positive")
+        val expectedCurrent = expectedCurrentValue.trim().toLongOrNull()
+            ?: return response(STATUS_INVALID_DATA, detail = "Expected current frequency must be an integer")
+        if (requested <= 0L || expectedCurrent <= 0L) {
+            return response(STATUS_INVALID_DATA, detail = "Frequency values must be positive")
         }
 
         return try {
+            val current = readNodeText(control.path).toLongOrNull()
+                ?: return response(STATUS_INVALID_DATA, detail = "Invalid live ${control.label} current value")
+            if (current != expectedCurrent) {
+                return response(
+                    STATUS_EXTERNAL_CHANGE,
+                    rawValue = current.toString(),
+                    detail = "${control.label} changed externally; refusing to overwrite"
+                )
+            }
             val max = readNodeText(control.maxPath).toLongOrNull()
                 ?: return response(STATUS_INVALID_DATA, detail = "Invalid live ${control.label} maximum")
             val available = readNodeText(control.availablePath)
@@ -324,6 +335,7 @@ class A55ShizukuUserService : IA55ShizukuService.Stub() {
         const val STATUS_NOT_FOUND = "NOT_FOUND"
         const val STATUS_TEMPORARY = "TEMPORARY"
         const val STATUS_OUTPUT_TOO_LARGE = "OUTPUT_TOO_LARGE"
+        const val STATUS_EXTERNAL_CHANGE = "EXTERNAL_CHANGE"
         const val STATUS_INVALID_DATA = "INVALID_DATA"
         const val STATUS_ERROR = "ERROR"
     }
