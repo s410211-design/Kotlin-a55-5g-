@@ -48,12 +48,20 @@ adb shell ls -l /sys/kernel/gpu/ 成功列出目錄內容，證明該目錄存�
 | SGPU `cur_freq` | SGPU devfreq 項目存在 | **成功；一次回傳原始值 `0`** |
 | SGPU `available_frequencies` | SGPU devfreq 項目存在 | **成功；9 個檔位，與 `gpu_freq_table` 數值集合相同** |
 | `gpu_freq_table` | 是 | **成功；9 個檔位，排序與 devfreq 相反** |
-| gpu_tmu | 是 | 尚未測試 |
+| gpu_tmu | 是 | **成功；回傳原始值 `37.0`，單位未確認** |
 | gpu_model | 是 | **成功；回傳 `Samsung Xclipse 530`** |
 | mem_info | 是 | 尚未測試 |
 | sgpu_pm_monitor | 是 | 尚未測試 |
 | utilization_source | 否 | 本次清單未見 |
 | available_utilization_sources | 否 | 本次清單未見 |
+
+使用者於 2026-11-12 執行 `adb shell cat /sys/kernel/gpu/gpu_tmu`，成功回傳：
+
+~~~text
+37.0
+~~~
+
+記錄為 GPU TMU 節點原始值 `37.0`。目前沒有取得能直接對應 SM-A5560 / Xclipse 530 此節點的驅動 ABI 或原始碼證據來確認單位與換算方式；因此**不可先標記成 37.0 °C**，也不可直接當作熱降頻判斷門檻。此系列測試延續先前使用者描述的影片播放、未執行遊戲情境；除非另有標註，視為非遊戲基線資料。
 
 使用者於 2026-11-12 執行 `adb shell cat /sys/kernel/gpu/gpu_model`，成功回傳：
 
@@ -161,7 +169,7 @@ adb shell ls -l /sys/class/devfreq/ 的清單可見以下項目：
 5. `gpu_busy` 的資料語義（即時百分比、累積計數器或其他格式）仍待驗證。
 6. `gpu_clock` 持續回傳 0 的原因，以及該節點是否為有效即時頻率來源仍待驗證。
 7. 兩份頻率表的數值單位尚未由裝置文件或驅動程式來源確認。
-8. GPU 溫度來源與單位。
+8. `gpu_tmu` 已確認可讀且回傳原始值 `37.0`；其確切單位、溫度感測來源及換算方式尚未確認。
 9. Shizuku 是否能取得額外且實際可用的讀取能力。
 ## 6. 下一輪唯讀診斷命令
 
