@@ -188,11 +188,11 @@ class PerformanceSessionService : Service() {
                         val gameModeResult = if (packageName.isNullOrBlank()) {
                             GameModeOutcome.Rejected("尚未選取鳴潮套件；請先按「啟動鳴潮」")
                         } else {
-                            gameModeController.apply(packageName)
+                            gameModeController.apply(packageName, percent)
                         }
-                        val cpuResult = boostController.apply(percent)
-                        val gpuResult = gpuBoostController.apply(percent)
-                        sessionText = applyAllBoostsText(gameModeResult, cpuResult, gpuResult)
+                        sessionText = "A55 GPU 渲染最佳化：\n" +
+                            gameModeOutcomeText(gameModeResult) +
+                            "\nCPU/GPU 頻率寫入：未執行（先前實機回報 EACCES，避免重複無效寫入）"
                     }
                     updateNotification()
                 }
@@ -636,7 +636,7 @@ class PerformanceSessionService : Service() {
     }
 
     private fun gameModeOutcomeText(outcome: GameModeOutcome): String = when (outcome) {
-        is GameModeOutcome.Applied -> "已切換 Performance（原始模式：${outcome.originalMode}），讀回確認"
+        is GameModeOutcome.Applied -> "已切換 Performance，GPU Backbuffer 渲染比例 ${outcome.downscalePercent}%（原始模式：${outcome.originalMode}），系統讀回確認"
         is GameModeOutcome.Restored -> if (outcome.externalChange) "偵測到外部模式變更，未覆寫" else "目前已是／已切回 ${outcome.originalMode}"
         is GameModeOutcome.Rejected -> "未套用：${outcome.reason}"
         GameModeOutcome.NoChange -> "已經是 Performance，無需變更"
@@ -729,7 +729,7 @@ class PerformanceSessionService : Service() {
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentTitle("鳴潮效能監控")
             .setContentText("$sessionText · Thermal $thermal")
-            .setStyle(Notification.BigTextStyle().bigText("$sessionText\n熱狀態：$thermal\nBoost 優先使用 Android GameManager Performance Mode；CPU/GPU 頻率控制僅作受權限限制的輔助，不提高原廠最高上限、不改電壓或停用溫控。"))
+            .setStyle(Notification.BigTextStyle().bigText("$sessionText\n熱狀態：$thermal\nBoost 優先使用 Android GameManager Performance Mode 與經讀回驗證的 GPU Backbuffer Downscale；CPU/GPU sysfs 頻率寫入因實機權限拒絕而停用，不提高硬體上限、不改電壓或停用溫控。"))
             .setContentIntent(launchIntent)
             .setOngoing(true)
             .addAction(Notification.Action.Builder(android.R.drawable.ic_menu_revert, "還原 Boost", restoreIntent).build())
@@ -780,7 +780,7 @@ class PerformanceSessionService : Service() {
         const val ACTION_START_FPS = "com.s410211.a55wuwa.action.START_FPS"
         const val ACTION_STOP_FPS = "com.s410211.a55wuwa.action.STOP_FPS"
         const val EXTRA_PERCENT = "boost_percent"
-        const val DEFAULT_PERCENT = 80
+        const val DEFAULT_PERCENT = 85
         const val SNAPSHOT_PREFS = "performance_session_snapshot"
         private const val CHANNEL_ID = "a55_performance_session"
         private const val NOTIFICATION_ID = 5502
