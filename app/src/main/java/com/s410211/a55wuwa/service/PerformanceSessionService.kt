@@ -28,6 +28,7 @@ import com.s410211.a55wuwa.shell.ShizukuGateway
 import com.s410211.a55wuwa.telemetry.GpuNodeCatalog
 import com.s410211.a55wuwa.telemetry.CpuLoadTracker
 import com.s410211.a55wuwa.telemetry.CpuStatParser
+import com.s410211.a55wuwa.telemetry.CpuSysfsReader
 import com.s410211.a55wuwa.telemetry.DeviceHealthReader
 import com.s410211.a55wuwa.telemetry.GpuSysfsReader
 import com.s410211.a55wuwa.telemetry.Reading
@@ -289,14 +290,14 @@ class PerformanceSessionService : Service() {
 
         CPU_CURRENT_PATHS.forEachIndexed { index, path ->
             snapshot.remove("cpu_policy_$index")
-            val reading = gateway.readNode(path, at)
+            val reading = gateway.readNode(path, at) ?: CpuSysfsReader.read(path, at)
             if (reading is Reading.Value) {
                 snapshot.putString("cpu_policy_$index", reading.value.take(64))
             }
         }
 
         snapshot.remove("cpu_load_percent").remove("cpu_load_status")
-        val procStat = gateway.readNode("/proc/stat", at)
+        val procStat = gateway.readNode("/proc/stat", at) ?: CpuSysfsReader.read("/proc/stat", at)
         if (procStat is Reading.Value) {
             when (val parsed = CpuStatParser.parse(procStat.value, at)) {
                 is Reading.Value -> when (val load = cpuLoadTracker.update(parsed.value, at)) {
