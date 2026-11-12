@@ -421,6 +421,8 @@ class PerformanceSessionService : Service() {
                         .putFloat("fps_cumulative", current.cumulativeAverageFps.toFloat())
                         .putString("fps_window", windowFps?.toString())
                         .putLong("fps_window_duration_ms", intervalMs ?: 0L)
+                        .putFloat("fps_slow20_percent", current.slow20FpsPercent?.toFloat() ?: -1f)
+                        .putFloat("fps_slow30_percent", current.slow30FpsPercent?.toFloat() ?: -1f)
                         .putLong("fps_total_frames", current.totalFrames)
                         .putString("fps_layer", current.layerName.take(240))
                         .putLong("fps_sampled_at", at)
@@ -454,6 +456,8 @@ class PerformanceSessionService : Service() {
             .putString("fps_status", "FPS 擷取已停止")
             .remove("fps_window")
             .remove("fps_window_duration_ms")
+            .putFloat("fps_slow20_percent", -1f)
+            .putFloat("fps_slow30_percent", -1f)
             .apply()
         true
     }
