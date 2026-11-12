@@ -562,6 +562,7 @@ class PerformanceSessionService : Service() {
             appendLine("A55 · 鳴潮 HUD")
             appendLine("GPU busy raw：${rawGpu("/sys/kernel/gpu/gpu_busy")}")
             appendLine("GPU clock raw：${rawGpu("/sys/kernel/gpu/gpu_clock")}")
+            appendLine("devfreq cur_freq raw：${rawGpu("/sys/class/devfreq/10e00000.sgpu/cur_freq")}")
             appendLine("CPU policy0：${cpuMHz(0)}")
             appendLine("CPU policy4：${cpuMHz(1)}")
             val batteryTemp = prefs.getFloat("battery_temp_c", -1f)
