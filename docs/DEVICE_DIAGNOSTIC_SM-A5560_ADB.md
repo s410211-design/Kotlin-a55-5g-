@@ -46,6 +46,9 @@ adb shell ls -l /sys/kernel/gpu/ 成功列出目錄內容，證明該目錄存�
 | gpu_busy | 是 | **成功；兩次均回傳原始值 `0`** |
 | gpu_clock | 是 | **成功；兩次均回傳原始值 `0`** |
 | SGPU `cur_freq` | SGPU devfreq 項目存在 | **成功；一次回傳原始值 `0`** |
+| SGPU `available_frequencies` | SGPU devfreq 項目存在 | **成功；9 個檔位，與 `gpu_freq_table` 數值集合相同** |
+| `gpu_freq_table` | 是 | **成功；9 個檔位，排序與 devfreq 相反** |
+| SGPU `cur_freq` | SGPU devfreq 項目存在 | **成功；一次回傳原始值 `0`** |
 | gpu_freq_table | 是 | 尚未測試 |
 | gpu_tmu | 是 | 尚未測試 |
 | gpu_model | 是 | 尚未測試 |
@@ -120,7 +123,13 @@ adb shell ls -l /sys/class/devfreq/ 的清單可見以下項目：
 1300000 1152000 1025000 960000 864000 750000 648000 544000 450000
 ~~~
 
-依 Linux devfreq ABI，`available_frequencies` 顯示該 devfreq 物件的可用頻率快照，不代表當前頻率，也不一定受 min/max 限制（參考 Linux kernel ABI 文件）。因此將這九個原始數字記為可用頻率檔位。**本次裝置輸出本身未附單位，文件暫保留 raw value，不自行標成 Hz 或 kHz。** `name`、`min_freq`、`max_freq`、`governor` 仍未測試。
+使用者再執行 `adb shell cat /sys/kernel/gpu/gpu_freq_table`，成功回傳：
+
+~~~text
+450000 544000 648000 750000 864000 960000 1025000 1152000 1300000
+~~~
+
+兩個不同節點回傳的九個數值集合完全相同，僅排序相反：devfreq 的 `available_frequencies` 由高到低，GPU `gpu_freq_table` 由低到高。這交叉確認了兩個介面列出的可用檔位一致，但**不代表當前 GPU 頻率**。本次裝置輸出本身未附單位，文件暫保留 raw value，不自行標成 Hz 或 kHz。
 
 本輪曾使用字面佔位路徑 /sys/class/devfreq/目錄名稱/...，因此得到 No such file or directory。這是因為路徑沒有替換成真實目錄名稱，不能據此判斷 SGPU 節點不存在或權限遭拒。後續應使用實際路徑 /sys/class/devfreq/10e00000.sgpu。
 
@@ -141,7 +150,7 @@ adb shell ls -l /sys/class/devfreq/ 的清單可見以下項目：
 ### 尚未確認
 1. Android release、API level、One UI、Build fingerprint、security patch、kernel release。
 2. 各 GPU sysfs 節點實際內容，以及 SELinux Enforcing 下是否允許 `cat`。
-3. SGPU `cur_freq` 已確認可讀但回傳 0；`available_frequencies` 已確認可讀且有 9 個檔位；`name`、`min_freq`、`max_freq`、`governor` 是否存在且可讀仍待確認。
+3. SGPU `cur_freq` 已確認可讀但回傳 0；`available_frequencies` 與 GPU `gpu_freq_table` 均已確認可讀，且九個原始檔位集合完全相同，單位仍待確認；`name`、`min_freq`、`max_freq`、`governor` 是否存在且可讀仍待確認。
 4. gpu_busy 的資料語義（即時百分比、累積計數器或其他格式）。
 5. gpu_clock 是否為當次即時頻率，或可能回傳 last-known/cache 值。
 6. GPU 溫度來源與單位。
