@@ -33,6 +33,7 @@ object CpuStatParser {
 class CpuLoadTracker {
     private var previous: CpuStatCounters? = null
 
+    @Synchronized
     fun update(
         current: CpuStatCounters,
         sampledAtMillis: Long
@@ -54,6 +55,7 @@ class CpuLoadTracker {
         return Reading.Value(usage, "/proc/stat", "%", sampledAtMillis)
     }
 
+    @Synchronized
     fun reset() {
         previous = null
     }
