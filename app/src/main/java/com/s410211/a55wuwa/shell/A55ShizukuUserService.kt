@@ -232,6 +232,85 @@ class A55ShizukuUserService : IA55ShizukuService.Stub() {
         )
     }
 
+
+    override fun getGameModeConfig(packageName: String): Array<String> {
+        if (!isValidPackageName(packageName)) {
+            return response(STATUS_INVALID_DATA, detail = "Invalid game package name")
+        }
+        return queryGameModeConfig(packageName)
+    }
+
+    override fun setGameModeDownscale(
+        packageName: String,
+        mode: String,
+        scale: String
+    ): Array<String> {
+        if (!isValidPackageName(packageName)) {
+            return response(STATUS_INVALID_DATA, detail = "Invalid game package name")
+        }
+        if (mode != "performance") {
+            return response(STATUS_INVALID_DATA, detail = "Only Performance mode downscaling is allowed")
+        }
+        if (scale !in SUPPORTED_DOWNSCALE_RATIOS) {
+            return response(STATUS_INVALID_DATA, detail = "Downscale ratio is not in the safe allowlist")
+        }
+
+        val modes = queryGameMode(packageName)
+        if (modes[0] != STATUS_OK) return modes
+        val available = modes.getOrNull(2).orEmpty().split(",").filter { it.isNotBlank() }
+        if ("performance" !in available) {
+            return response(STATUS_UNSUPPORTED, detail = "GameManager Performance mode is not advertised for this game")
+        }
+
+        val changed = runFixedCommand(
+            listOf(
+                "/system/bin/cmd", "game", "set",
+                "--mode", "performance",
+                "--downscale", scale,
+                packageName
+            )
+        )
+        if (changed[0] != STATUS_OK) return changed
+
+        val config = queryGameModeConfig(packageName)
+        if (config[0] != STATUS_OK) return config
+        val actual = Regex(
+            """downscal(?:e|ing)[^0-9]*([0-9]+(?:\\.[0-9]+)?)""",
+            RegexOption.IGNORE_CASE
+        ).find(config.getOrNull(1).orEmpty())?.groupValues?.getOrNull(1)
+        val matches = actual?.toFloatOrNull()?.let {
+            kotlin.math.abs(it - scale.toFloat()) < 0.001f
+        } == true
+        return if (matches) {
+            response(STATUS_OK, rawValue = scale, detail = config.getOrNull(1).orEmpty())
+        } else {
+            response(
+                STATUS_ERROR,
+                rawValue = config.getOrNull(1).orEmpty(),
+                detail = "GameManager downscale read-back did not match $scale"
+            )
+        }
+    }
+
+    override fun resetGameModeConfig(packageName: String, mode: String): Array<String> {
+        if (!isValidPackageName(packageName)) {
+            return response(STATUS_INVALID_DATA, detail = "Invalid game package name")
+        }
+        if (mode != "performance") {
+            return response(STATUS_INVALID_DATA, detail = "Only Performance mode config can be reset")
+        }
+        val reset = runFixedCommand(
+            listOf("/system/bin/cmd", "game", "reset", "--mode", "performance", packageName)
+        )
+        if (reset[0] != STATUS_OK) return reset
+        val after = queryGameModeConfig(packageName)
+        if (after[0] != STATUS_OK) return after
+        return response(STATUS_OK, rawValue = after.getOrNull(1).orEmpty(), detail = after.getOrNull(2).orEmpty())
+    }
+
+    private fun queryGameModeConfig(packageName: String): Array<String> =
+        runFixedCommand(listOf("/system/bin/cmd", "game", "list-configs", packageName))
+
     private fun queryGameMode(packageName: String): Array<String> {
         val result = runFixedCommand(
             listOf("/system/bin/cmd", "game", "list-modes", packageName)
@@ -462,5 +541,6 @@ class A55ShizukuUserService : IA55ShizukuService.Stub() {
         const val STATUS_INVALID_DATA = "INVALID_DATA"
         const val STATUS_ERROR = "ERROR"
         val SUPPORTED_GAME_MODES = setOf("standard", "performance", "battery", "custom")
+        val SUPPORTED_DOWNSCALE_RATIOS = setOf("0.7", "0.75", "0.8", "0.85", "0.9")
     }
 }
