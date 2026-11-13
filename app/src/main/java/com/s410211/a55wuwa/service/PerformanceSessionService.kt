@@ -855,8 +855,8 @@ class PerformanceSessionService : Service() {
         private const val NOTIFICATION_ID = 5502
         private const val SAMPLE_INTERVAL_MS = 1_000L
         private const val FPS_SAMPLE_INTERVAL_MS = 5_000L
-        private const val SPERF_TIMEOUT_MS = 3_000
-        private const val SPERF_RENEW_INTERVAL_MS = 2_000L
+        private const val SPERF_TIMEOUT_MS = 5_000
+        private const val SPERF_RENEW_INTERVAL_MS = 4_000L
         private const val SHIZUKU_WAIT_ATTEMPTS = 40
         private const val SHIZUKU_WAIT_INTERVAL_MS = 250L
         private val CPU_CURRENT_PATHS = listOf(
